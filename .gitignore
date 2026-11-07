@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.env
+node_modules/
+frontend/dist/
+*.db
+logs/
+
+# Machine-specific MCP configs (absolute paths of this computer)
+.mcp.json
+.codex/config.toml
+
+# Private phase notes (contain local network/device details)
+docs/PHASE*.md

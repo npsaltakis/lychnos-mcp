@@ -1,0 +1,88 @@
+import { useAuth } from "../store/auth";
+import type {
+  BatchResult,
+  Command,
+  CommandResult,
+  DeviceRuntime,
+  DeviceView,
+  Scene,
+  SceneInput,
+  SystemInfo,
+} from "./types";
+
+/** Error returned by the backend: {"error": {code, message, details}} */
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    public code: string,
+    message: string,
+    public details: Record<string, unknown> = {},
+  ) {
+    super(message);
+  }
+}
+
+async function toError(res: Response): Promise<ApiError> {
+  try {
+    const body = await res.json();
+    const err = body?.error ?? {};
+    return new ApiError(res.status, err.code ?? "http_error", err.message ?? res.statusText, err.details ?? {});
+  } catch {
+    return new ApiError(res.status, "http_error", res.statusText || "Σφάλμα δικτύου");
+  }
+}
+
+// The dashboard authenticates with an HttpOnly session cookie that JavaScript cannot read.
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`/api${path}`, {
+      method,
+      credentials: "same-origin",
+      headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new ApiError(0, "network_error", "Ο server δεν απαντά. Τρέχει το backend;");
+  }
+  if (!res.ok) {
+    const error = await toError(res);
+    if (res.status === 401 && !path.startsWith("/auth/")) useAuth.getState().set("signed_out");
+    throw error;
+  }
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
+
+export const api = {
+  authStatus: () => request<{ authenticated: boolean; password_set: boolean }>("GET", "/auth/status"),
+  login: (password: string) => request<{ authenticated: boolean }>("POST", "/auth/login", { password }),
+  logout: () => request<{ authenticated: boolean }>("POST", "/auth/logout"),
+  systemInfo: () => request<SystemInfo>("GET", "/system/info"),
+  devices: () => request<DeviceView[]>("GET", "/devices"),
+  scan: (timeout_s?: number) => request<DeviceView[]>("POST", "/discovery/scan", { timeout_s }),
+  updateDevice: (id: string, patch: { name?: string; registered?: boolean }) =>
+    request<DeviceView>("PATCH", `/devices/${encodeURIComponent(id)}`, patch),
+  deleteDevice: (id: string) => request<void>("DELETE", `/devices/${encodeURIComponent(id)}`),
+  refreshState: (id: string) =>
+    request<DeviceRuntime>("GET", `/devices/${encodeURIComponent(id)}/state?refresh=true`),
+  command: (id: string, command: Command) =>
+    request<CommandResult>("POST", `/devices/${encodeURIComponent(id)}/commands`, command),
+  groupCommand: (command: Command) => request<BatchResult>("POST", "/groups/all/commands", command),
+  scenes: () => request<Scene[]>("GET", "/scenes"),
+  createScene: (scene: SceneInput) => request<Scene>("POST", "/scenes", scene),
+  updateScene: (id: string, scene: SceneInput) => request<Scene>("PUT", `/scenes/${id}`, scene),
+  deleteScene: (id: string) => request<void>("DELETE", `/scenes/${id}`),
+  activateScene: (id: string) => request<BatchResult>("POST", `/scenes/${id}/activate`),
+};
+
+/** Ask the backend whether this browser has a valid session. */
+export async function checkAuth(): Promise<void> {
+  const set = useAuth.getState().set;
+  try {
+    const status = await api.authStatus();
+    set(status.authenticated ? "signed_in" : status.password_set ? "signed_out" : "no_password");
+  } catch {
+    set("signed_out");
+  }
+}

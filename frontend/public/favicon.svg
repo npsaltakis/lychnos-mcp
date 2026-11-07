@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b2130"/>
+      <stop offset="1" stop-color="#0b0d12"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#f5b942" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#f5b942" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="bulb" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffe08a"/>
+      <stop offset="1" stop-color="#f5a623"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <circle cx="256" cy="282" r="190" fill="url(#glow)"/>
+  <!-- house outline -->
+  <path d="M120 252 L256 134 L392 252 V380 a24 24 0 0 1 -24 24 H144 a24 24 0 0 1 -24 -24 Z"
+        fill="none" stroke="#f5b942" stroke-width="34" stroke-linejoin="round" stroke-linecap="round"/>
+  <!-- light bulb -->
+  <path d="M256 200 a62 62 0 0 1 36 112 v14 a10 10 0 0 1 -10 10 h-52 a10 10 0 0 1 -10 -10 v-14 A62 62 0 0 1 256 200 Z"
+        fill="url(#bulb)"/>
+  <rect x="232" y="344" width="48" height="12" rx="6" fill="#cbd2dc"/>
+  <rect x="238" y="362" width="36" height="10" rx="5" fill="#9aa3b2"/>
+</svg>

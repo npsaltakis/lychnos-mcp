@@ -1,0 +1,185 @@
+"""REST endpoints. Everything except health and login requires authentication."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, Query, Request, Response, status
+from pydantic import BaseModel, Field
+
+from app import __version__
+from app.api.deps import SESSION_COOKIE, Auth, Devices, Scenes, origin_allowed, require_auth
+from app.core.errors import CommandFailedError, UnauthorizedError
+from app.domain.models import (
+    BatchResult,
+    Command,
+    CommandOutcome,
+    CommandResult,
+    DeviceRuntime,
+    DeviceView,
+    Scene,
+    SceneInput,
+    utcnow,
+)
+
+public = APIRouter(prefix="/api", tags=["system"])
+api = APIRouter(prefix="/api", dependencies=[Depends(require_auth)])
+
+
+# ----------------------------------------------------------------------------- system
+
+
+@public.get("/health")
+async def health() -> dict[str, str]:
+    return {"status": "ok", "version": __version__}
+
+
+# ----------------------------------------------------------------------------- dashboard login
+
+
+class LoginRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=256)
+
+
+@public.get("/auth/status", tags=["auth"])
+async def auth_status(request: Request, auth: Auth) -> dict[str, bool]:
+    return {
+        "authenticated": await auth.validate(request.cookies.get(SESSION_COOKIE)),
+        "password_set": auth.password_set,
+    }
+
+
+@public.post("/auth/login", tags=["auth"])
+async def login(body: LoginRequest, request: Request, response: Response, auth: Auth) -> dict[str, bool]:
+    if not origin_allowed(request, request.headers.get("origin")):
+        raise UnauthorizedError("Login is only allowed from the dashboard")
+    session_id, expires = await auth.login(
+        body.password,
+        client=request.client.host if request.client else "unknown",
+        user_agent=request.headers.get("user-agent", ""),
+    )
+    response.set_cookie(
+        SESSION_COOKIE,
+        session_id,
+        max_age=int((expires - utcnow()).total_seconds()),
+        httponly=True,
+        samesite="strict",
+        secure=request.url.scheme == "https",
+        path="/",
+    )
+    return {"authenticated": True}
+
+
+@public.post("/auth/logout", tags=["auth"])
+async def logout(request: Request, response: Response, auth: Auth) -> dict[str, bool]:
+    await auth.logout(request.cookies.get(SESSION_COOKIE))
+    response.delete_cookie(SESSION_COOKIE, path="/", samesite="strict", httponly=True)
+    return {"authenticated": False}
+
+
+@api.get("/system/info", tags=["system"])
+async def system_info(request: Request, devices: Devices) -> dict[str, object]:
+    settings = request.app.state.settings
+    views = devices.list_devices()
+    return {
+        "version": __version__,
+        "providers": devices.provider_status(),
+        "devices_total": len(views),
+        "devices_registered": sum(1 for v in views if v.device.registered),
+        "poll_interval_s": settings.poll_interval_s,
+        "remote_access": settings.allow_remote,
+    }
+
+
+# ----------------------------------------------------------------------------- devices
+
+
+class DiscoveryRequest(BaseModel):
+    timeout_s: float | None = Field(None, gt=0, le=15)
+
+
+class DeviceUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=64)
+    registered: bool | None = None
+
+
+@api.post("/discovery/scan", tags=["devices"])
+async def scan(devices: Devices, body: DiscoveryRequest | None = None) -> list[DeviceView]:
+    return await devices.discover(body.timeout_s if body else None)
+
+
+@api.get("/devices", tags=["devices"])
+async def list_devices(devices: Devices, registered: bool | None = Query(None)) -> list[DeviceView]:
+    return devices.list_devices(registered)
+
+
+@api.get("/devices/{device_id}", tags=["devices"])
+async def get_device(device_id: str, devices: Devices) -> DeviceView:
+    return devices.get_view(device_id)
+
+
+@api.patch("/devices/{device_id}", tags=["devices"])
+async def update_device(device_id: str, body: DeviceUpdate, devices: Devices) -> DeviceView:
+    return await devices.update_device(device_id, name=body.name, registered=body.registered)
+
+
+@api.delete("/devices/{device_id}", tags=["devices"], status_code=status.HTTP_204_NO_CONTENT)
+async def delete_device(device_id: str, devices: Devices) -> None:
+    await devices.delete_device(device_id)
+
+
+@api.get("/devices/{device_id}/state", tags=["devices"])
+async def get_state(
+    device_id: str,
+    devices: Devices,
+    refresh: bool = Query(False, description="Read from the device instead of the cache"),
+) -> DeviceRuntime:
+    return await devices.refresh_state(device_id, force=refresh)
+
+
+@api.post("/devices/{device_id}/commands", tags=["devices"])
+async def send_command(device_id: str, command: Command, devices: Devices) -> CommandResult:
+    result = await devices.execute(device_id, command)
+    if result.outcome is CommandOutcome.FAILED and result.error is not None:
+        raise CommandFailedError(
+            result.error.message,
+            code=result.error.code,
+            details={"result": result.model_dump(mode="json")},
+        )
+    return result
+
+
+@api.post("/groups/all/commands", tags=["devices"])
+async def send_group_command(command: Command, devices: Devices) -> BatchResult:
+    return await devices.execute_on_all(command)
+
+
+# ----------------------------------------------------------------------------- scenes
+
+
+@api.get("/scenes", tags=["scenes"])
+async def list_scenes(scenes: Scenes) -> list[Scene]:
+    return await scenes.list()
+
+
+@api.post("/scenes", tags=["scenes"], status_code=status.HTTP_201_CREATED)
+async def create_scene(body: SceneInput, scenes: Scenes) -> Scene:
+    return await scenes.create(body)
+
+
+@api.get("/scenes/{scene_id}", tags=["scenes"])
+async def get_scene(scene_id: str, scenes: Scenes) -> Scene:
+    return await scenes.get(scene_id)
+
+
+@api.put("/scenes/{scene_id}", tags=["scenes"])
+async def update_scene(scene_id: str, body: SceneInput, scenes: Scenes) -> Scene:
+    return await scenes.update(scene_id, body)
+
+
+@api.delete("/scenes/{scene_id}", tags=["scenes"], status_code=status.HTTP_204_NO_CONTENT)
+async def delete_scene(scene_id: str, scenes: Scenes) -> None:
+    await scenes.delete(scene_id)
+
+
+@api.post("/scenes/{scene_id}/activate", tags=["scenes"])
+async def activate_scene(scene_id: str, scenes: Scenes) -> BatchResult:
+    return await scenes.activate(scene_id)
