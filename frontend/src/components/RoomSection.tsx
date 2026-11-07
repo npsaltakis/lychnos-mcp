@@ -3,15 +3,17 @@ import { useState } from "react";
 import { api } from "../api/client";
 import type { Command, DeviceView, Room } from "../api/types";
 import { reportError } from "../lib/commands";
+import { useT } from "../lib/i18n";
 import { summarizeBatch } from "./AllLights";
 import { DeviceCard } from "./DeviceCard";
 import { Button } from "./ui";
 
 /** A room heading with room-wide controls, followed by the room's device cards. */
 export function RoomSection({ room, views }: { room: Room | null; views: DeviceView[] }) {
+  const t = useT();
   const [busy, setBusy] = useState<string | null>(null);
   const on = views.filter((v) => v.runtime.state.power === true).length;
-  const title = room?.name ?? "Χωρίς δωμάτιο";
+  const title = room?.name ?? t("room.none");
 
   const run = async (key: string, label: string, command: Command) => {
     if (!room) return;
@@ -32,9 +34,7 @@ export function RoomSection({ room, views }: { room: Room | null; views: DeviceV
           <h2 id={`room-${room?.id ?? "none"}`} className="text-lg font-semibold">
             {title}
           </h2>
-          <p className="text-sm text-muted">
-            {on} από {views.length} αναμμένα
-          </p>
+          <p className="text-sm text-muted">{t("all.onCount", { on, total: views.length })}</p>
         </div>
         {room && (
           <div className="flex gap-2">

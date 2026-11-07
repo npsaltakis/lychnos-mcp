@@ -341,7 +341,8 @@ async def webpush_unsubscribe(body: Unsubscribe, notifications: Notifications) -
 @api.get("/activity", tags=["history"])
 async def list_activity(
     activity: Activity,
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=1000),
     device_id: str | None = Query(None),
+    kind: Literal["commands", "changes", "availability"] | None = Query(None),
 ) -> list[ActivityEntry]:
-    return await activity.recent(limit, device_id)
+    return await activity.recent(limit, device_id, kind)

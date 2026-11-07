@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import type { BatchResult, Command } from "../api/types";
 import { PRESETS, rgbToHex } from "../lib/color";
 import { reportError } from "../lib/commands";
+import { t, useT } from "../lib/i18n";
 import { notify } from "../store/toasts";
 import { Button, Card } from "./ui";
 
@@ -12,17 +13,18 @@ export function summarizeBatch(title: string, result: BatchResult): void {
   const failed = result.results.filter((r) => r.outcome === "failed");
   const total = result.results.length;
   if (result.outcome === "nothing_to_do") {
-    notify("info", title, "Καμία συσκευή δεν υποστηρίζει αυτή την ενέργεια");
+    notify("info", title, t("batch.nothing"));
   } else if (result.outcome === "all_confirmed") {
-    notify("success", title, `Επιβεβαιώθηκε σε ${confirmed}/${total} συσκευές`);
+    notify("success", title, t("batch.allOk", { ok: confirmed, total }));
   } else if (result.outcome === "failed") {
-    notify("error", title, failed[0]?.error?.message ?? "Απέτυχε σε όλες τις συσκευές");
+    notify("error", title, failed[0]?.error?.message ?? t("batch.failed"));
   } else {
-    notify("warning", title, `Επιβεβαιώθηκε σε ${confirmed}/${total}, ${failed.length} απέτυχαν`);
+    notify("warning", title, t("batch.partial", { ok: confirmed, total, failed: failed.length }));
   }
 }
 
 export function AllLights({ count, onCount }: { count: number; onCount: number }) {
+  const tr = useT();
   const [busy, setBusy] = useState<string | null>(null);
 
   const run = async (key: string, title: string, command: Command) => {
@@ -40,38 +42,36 @@ export function AllLights({ count, onCount }: { count: number; onCount: number }
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="font-semibold">Όλα τα φώτα</h2>
-          <p className="text-sm text-muted">
-            {onCount} από {count} αναμμένα
-          </p>
+          <h2 className="font-semibold">{tr("all.title")}</h2>
+          <p className="text-sm text-muted">{tr("all.onCount", { on: onCount, total: count })}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
             variant="primary"
             busy={busy === "on"}
             disabled={!count || busy !== null}
-            onClick={() => run("on", "Όλα ON", { type: "set_power", on: true })}
+            onClick={() => run("on", tr("all.on"), { type: "set_power", on: true })}
           >
-            <Power className="size-4" aria-hidden /> Όλα ON
+            <Power className="size-4" aria-hidden /> {tr("all.on")}
           </Button>
           <Button
             busy={busy === "off"}
             disabled={!count || busy !== null}
-            onClick={() => run("off", "Όλα OFF", { type: "set_power", on: false })}
+            onClick={() => run("off", tr("all.off"), { type: "set_power", on: false })}
           >
-            <PowerOff className="size-4" aria-hidden /> Όλα OFF
+            <PowerOff className="size-4" aria-hidden /> {tr("all.off")}
           </Button>
         </div>
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        <span className="mr-1 text-sm text-muted">Χρώμα σε όλα:</span>
+        <span className="mr-1 text-sm text-muted">{tr("all.colorAll")}</span>
         {PRESETS.map((p) => (
           <button
-            key={p.name}
-            title={p.name}
-            aria-label={`${p.name} σε όλα`}
+            key={p.key}
+            title={tr(p.key)}
+            aria-label={tr("all.colorAllAria", { color: tr(p.key) })}
             disabled={busy !== null || !count}
-            onClick={() => run(`c-${p.name}`, `Όλα ${p.name}`, { type: "set_color", color: p.rgb })}
+            onClick={() => run(`c-${p.key}`, tr("all.colorAllAria", { color: tr(p.key) }), { type: "set_color", color: p.rgb })}
             className="size-8 rounded-full border-2 border-white/10 transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-40"
             style={{ background: rgbToHex(p.rgb) }}
           />

@@ -4,18 +4,19 @@ import { ApiError, api } from "../api/client";
 import type { Channel, NotificationSettings, NotificationView } from "../api/types";
 import { reportError } from "../lib/commands";
 import { currentSubscription, disableWebPush, enableWebPush, webPushContextOk, webPushSupported } from "../lib/webpush";
+import { t, useT, type MessageKey } from "../lib/i18n";
 import { notify } from "../store/toasts";
 import { Button, Card, Toggle, cx } from "./ui";
 
 type Secrets = { ntfy_token: string; telegram_token: string; smtp_password: string };
 const NO_SECRETS: Secrets = { ntfy_token: "", telegram_token: "", smtp_password: "" };
 
-const EVENTS: { key: keyof NotificationSettings["events"]; label: string; hint: string }[] = [
-  { key: "device_offline", label: "Συσκευή εκτός δικτύου", hint: "π.χ. κόπηκε το ρεύμα" },
-  { key: "device_online", label: "Συσκευή ξανά online", hint: "" },
-  { key: "automation_failed", label: "Αποτυχία αυτοματισμού", hint: "" },
-  { key: "automation_ran", label: "Κάθε εκτέλεση αυτοματισμού", hint: "μπορεί να είναι συχνό" },
-  { key: "command_failed", label: "Αποτυχία εντολής", hint: "μπορεί να είναι συχνό" },
+const EVENTS: { key: keyof NotificationSettings["events"]; hint?: MessageKey }[] = [
+  { key: "device_offline", hint: "ntf.ev.device_offlineHint" },
+  { key: "device_online" },
+  { key: "automation_failed" },
+  { key: "automation_ran", hint: "ntf.ev.frequent" },
+  { key: "command_failed", hint: "ntf.ev.frequent" },
 ];
 
 const input = "min-h-10 w-full rounded-xl border border-line bg-panel-2 px-3 text-sm focus:border-accent focus:outline-none";
@@ -52,12 +53,12 @@ function SecretInput({
         autoComplete="off"
         className={input}
         value={value}
-        placeholder={saved ? "•••••• αποθηκευμένο (γράψε για αλλαγή)" : placeholder}
+        placeholder={saved ? t("ntf.secretSaved") : placeholder}
         onChange={(e) => onChange(e.target.value)}
       />
       {saved && (
         <Button type="button" variant="ghost" className="border border-line" onClick={onClear}>
-          Αφαίρεση
+          {t("ntf.remove")}
         </Button>
       )}
     </div>
@@ -91,13 +92,13 @@ function Channel({
           <h3 className="font-medium">{title}</h3>
           <p className="text-sm text-muted">{description}</p>
         </div>
-        <Toggle label={`${title} ενεργό`} checked={enabled} onChange={onToggle} />
+        <Toggle label={t("ntf.enabledAria", { name: title })} checked={enabled} onChange={onToggle} />
       </div>
       {enabled && (
         <div className="mt-4 space-y-3">
           {children}
           <Button type="button" variant="ghost" className="border border-line" busy={testing} onClick={onTest}>
-            <Send className="size-4" aria-hidden /> Δοκιμή
+            <Send className="size-4" aria-hidden /> {t("ntf.test")}
           </Button>
         </div>
       )}
@@ -111,6 +112,7 @@ function randomTopic(): string {
 }
 
 export function NotificationsCard() {
+  const tr = useT();
   const [saved, setSaved] = useState<NotificationView | null>(null);
   const [form, setForm] = useState<NotificationSettings | null>(null);
   const [secrets, setSecrets] = useState<Secrets>(NO_SECRETS);
@@ -146,7 +148,7 @@ export function NotificationsCard() {
     setBusy("save");
     try {
       load(await api.saveNotifications({ ...form, secrets: secretPayload() }));
-      if (!quiet) notify("success", "Οι ειδοποιήσεις αποθηκεύτηκαν");
+      if (!quiet) notify("success", t("ntf.saved"));
       return true;
     } catch (err) {
       reportError(null, err);
@@ -162,8 +164,8 @@ export function NotificationsCard() {
     try {
       const result = await api.testNotification(channel);
       const message = result[channel];
-      if (message === "ok") notify("success", "Στάλθηκε δοκιμαστική ειδοποίηση", "Έλεγξε τη συσκευή σου.");
-      else notify("error", "Η δοκιμή απέτυχε", message);
+      if (message === "ok") notify("success", t("ntf.testSent"), t("ntf.testSentText"));
+      else notify("error", t("ntf.testFailed"), message);
     } catch (err) {
       reportError(null, err);
     } finally {
@@ -177,7 +179,7 @@ export function NotificationsCard() {
       const found = await api.telegramChats(secrets.telegram_token || undefined);
       setChats(found);
       if (found.length === 1) set("telegram", { chat_id: found[0].id });
-      if (!found.length) notify("warning", "Δεν βρέθηκε συνομιλία", "Στείλε πρώτα /start στο bot σου από το Telegram και ξαναδοκίμασε.");
+      if (!found.length) notify("warning", t("ntf.tgNone"), t("ntf.tgNoneText"));
     } catch (err) {
       reportError(null, err);
     } finally {
@@ -194,12 +196,12 @@ export function NotificationsCard() {
       } else {
         await enableWebPush();
         setThisBrowser(true);
-        notify("success", "Αυτός ο browser θα λαμβάνει ειδοποιήσεις");
+        notify("success", t("ntf.browserOk"));
       }
       load(await api.notifications());
     } catch (err) {
       if (err instanceof ApiError) reportError(null, err);
-      else notify("error", "Ειδοποιήσεις browser", err instanceof Error ? err.message : String(err));
+      else notify("error", t("ntf.browser"), err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(null);
     }
@@ -226,16 +228,13 @@ export function NotificationsCard() {
       <div className="flex items-start gap-3">
         <Bell className="mt-0.5 size-5 text-accent" aria-hidden />
         <div>
-          <h2 className="font-semibold">Ειδοποιήσεις</h2>
-          <p className="text-sm text-muted">
-            Όλα τα κανάλια είναι απενεργοποιημένα μέχρι να τα ανοίξεις. Κωδικοί και tokens αποθηκεύονται στο keyring του
-            συστήματος, όχι στη βάση.
-          </p>
+          <h2 className="font-semibold">{tr("ntf.title")}</h2>
+          <p className="text-sm text-muted">{tr("ntf.intro")}</p>
         </div>
       </div>
 
       <fieldset>
-        <legend className="mb-2 text-sm text-muted">Για ποια γεγονότα</legend>
+        <legend className="mb-2 text-sm text-muted">{tr("ntf.events")}</legend>
         <div className="grid gap-2 sm:grid-cols-2">
           {EVENTS.map((e) => (
             <label key={e.key} className="inline-flex items-center gap-2 text-sm">
@@ -245,8 +244,8 @@ export function NotificationsCard() {
                 checked={form.events[e.key]}
                 onChange={(ev) => set("events", { [e.key]: ev.target.checked })}
               />
-              {e.label}
-              {e.hint && <span className="text-xs text-muted">({e.hint})</span>}
+              {tr(`ntf.ev.${e.key}` as MessageKey)}
+              {e.hint && <span className="text-xs text-muted">({tr(e.hint)})</span>}
             </label>
           ))}
         </div>
@@ -256,21 +255,18 @@ export function NotificationsCard() {
         <Channel
           icon={<Smartphone className="size-5" />}
           title="ntfy"
-          description="Δωρεάν εφαρμογή ειδοποιήσεων για Android/iPhone, χωρίς λογαριασμό."
+          description={tr("ntf.ntfyDesc")}
           enabled={form.ntfy.enabled}
           onToggle={(on) => set("ntfy", { enabled: on, topic: form.ntfy.topic || randomTopic() })}
           onTest={() => test("ntfy")}
           testing={busy === "test-ntfy"}
         >
-          <p className="text-sm text-muted">
-            Εγκατάστησε την εφαρμογή <b>ntfy</b>, πάτα «+» και κάνε Subscribe στο θέμα παρακάτω. Όποιος ξέρει το όνομα
-            του θέματος βλέπει τις ειδοποιήσεις, γι' αυτό κράτα το τυχαίο.
-          </p>
+          <p className="text-sm text-muted">{tr("ntf.ntfyHelp")}</p>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Θέμα (topic)">
+            <Field label={tr("ntf.topic")}>
               <div className="flex gap-2">
                 <input id="ntfy-topic" className={input} value={form.ntfy.topic} maxLength={64} onChange={(e) => set("ntfy", { topic: e.target.value.replace(/[^A-Za-z0-9_-]/g, "") })} />
-                <Button type="button" variant="ghost" className="border border-line" aria-label="Τυχαίο όνομα" onClick={() => set("ntfy", { topic: randomTopic() })}>
+                <Button type="button" variant="ghost" className="border border-line" aria-label={tr("ntf.random")} onClick={() => set("ntfy", { topic: randomTopic() })}>
                   <Shuffle className="size-4" />
                 </Button>
               </div>
@@ -278,8 +274,8 @@ export function NotificationsCard() {
             <Field label="Server">
               <input id="ntfy-server" className={input} value={form.ntfy.server} onChange={(e) => set("ntfy", { server: e.target.value })} />
             </Field>
-            <Field label="Access token (μόνο για δικό σου/κλειδωμένο server)" wide>
-              <SecretInput {...secretProps("ntfy_token", "προαιρετικό")} />
+            <Field label={tr("ntf.token")} wide>
+              <SecretInput {...secretProps("ntfy_token", tr("ntf.optional"))} />
             </Field>
           </div>
         </Channel>
@@ -287,31 +283,31 @@ export function NotificationsCard() {
         <Channel
           icon={<Send className="size-5" />}
           title="Telegram"
-          description="Μηνύματα από δικό σου bot στο Telegram."
+          description={tr("ntf.tgDesc")}
           enabled={form.telegram.enabled}
           onToggle={(on) => set("telegram", { enabled: on })}
           onTest={() => test("telegram")}
           testing={busy === "test-telegram"}
         >
           <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
-            <li>Στο Telegram άνοιξε τον <b>@BotFather</b>, στείλε <code>/newbot</code> και αντέγραψε το token.</li>
-            <li>Άνοιξε το νέο bot σου και στείλε του <code>/start</code>.</li>
-            <li>Επικόλλησε το token εδώ και πάτα «Εύρεση συνομιλίας».</li>
+            <li>{tr("ntf.tgStep1")}</li>
+            <li>{tr("ntf.tgStep2")}</li>
+            <li>{tr("ntf.tgStep3")}</li>
           </ol>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Bot token" wide>
+            <Field label={tr("ntf.tgToken")} wide>
               <SecretInput {...secretProps("telegram_token", "123456:ABC…")} />
             </Field>
             <Field label="Chat ID">
               <div className="flex gap-2">
                 <input id="tg-chat" className={input} value={form.telegram.chat_id} onChange={(e) => set("telegram", { chat_id: e.target.value.replace(/[^\d-]/g, "") })} />
                 <Button type="button" variant="ghost" className="border border-line whitespace-nowrap" busy={busy === "chats"} onClick={findChats}>
-                  Εύρεση συνομιλίας
+                  {tr("ntf.tgFind")}
                 </Button>
               </div>
             </Field>
             {chats.length > 1 && (
-              <Field label="Βρέθηκαν">
+              <Field label={tr("ntf.tgFound")}>
                 <select className={input} value={form.telegram.chat_id} onChange={(e) => set("telegram", { chat_id: e.target.value })}>
                   {chats.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -327,42 +323,39 @@ export function NotificationsCard() {
         <Channel
           icon={<Mail className="size-5" />}
           title="Email"
-          description="Μέσω SMTP, π.χ. Gmail με App Password."
+          description={tr("ntf.mailDesc")}
           enabled={form.email.enabled}
           onToggle={(on) => set("email", { enabled: on })}
           onTest={() => test("email")}
           testing={busy === "test-email"}
         >
-          <p className="text-sm text-muted">
-            Για Gmail: server <code>smtp.gmail.com</code>, θύρα 587, STARTTLS, και κωδικός από τα «App passwords» του
-            λογαριασμού Google (όχι ο κανονικός σου κωδικός).
-          </p>
+          <p className="text-sm text-muted">{tr("ntf.mailHelp")}</p>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="SMTP server">
+            <Field label={tr("ntf.smtpServer")}>
               <input id="smtp-host" className={input} value={form.email.smtp_host} placeholder="smtp.gmail.com" onChange={(e) => set("email", { smtp_host: e.target.value.trim() })} />
             </Field>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Θύρα">
+              <Field label={tr("ntf.port")}>
                 <input id="smtp-port" type="number" className={input} value={form.email.smtp_port} onChange={(e) => set("email", { smtp_port: Number(e.target.value) })} />
               </Field>
-              <Field label="Ασφάλεια">
+              <Field label={tr("ntf.security")}>
                 <select id="smtp-sec" className={input} value={form.email.security} onChange={(e) => set("email", { security: e.target.value as "starttls" | "ssl" | "none" })}>
                   <option value="starttls">STARTTLS</option>
                   <option value="ssl">SSL</option>
-                  <option value="none">Καμία</option>
+                  <option value="none">{tr("ntf.none")}</option>
                 </select>
               </Field>
             </div>
-            <Field label="Όνομα χρήστη">
+            <Field label={tr("ntf.username")}>
               <input id="smtp-user" className={input} autoComplete="off" value={form.email.username} onChange={(e) => set("email", { username: e.target.value.trim() })} />
             </Field>
-            <Field label="Κωδικός (App Password)">
-              <SecretInput {...secretProps("smtp_password", "κωδικός SMTP")} />
+            <Field label={tr("ntf.password")}>
+              <SecretInput {...secretProps("smtp_password", tr("ntf.passwordPlaceholder"))} />
             </Field>
-            <Field label="Αποστολέας">
+            <Field label={tr("ntf.sender")}>
               <input id="smtp-from" className={input} value={form.email.sender} onChange={(e) => set("email", { sender: e.target.value.trim() })} />
             </Field>
-            <Field label="Παραλήπτης">
+            <Field label={tr("ntf.recipient")}>
               <input id="smtp-to" className={input} value={form.email.recipient} onChange={(e) => set("email", { recipient: e.target.value.trim() })} />
             </Field>
           </div>
@@ -370,26 +363,23 @@ export function NotificationsCard() {
 
         <Channel
           icon={<MonitorSmartphone className="size-5" />}
-          title="Ειδοποιήσεις browser"
-          description="Ειδοποιήσεις από το ίδιο το dashboard, χωρίς επιπλέον εφαρμογή."
+          title={tr("ntf.browser")}
+          description={tr("ntf.browserDesc")}
           enabled={form.webpush.enabled}
           onToggle={(on) => set("webpush", { enabled: on })}
           onTest={() => test("webpush")}
           testing={busy === "test-webpush"}
         >
           {!webPushSupported() ? (
-            <p className="text-sm text-amber-300">Αυτός ο browser δεν υποστηρίζει ειδοποιήσεις push.</p>
+            <p className="text-sm text-amber-300">{tr("ntf.browserUnsupported")}</p>
           ) : !webPushContextOk() ? (
-            <p className="text-sm text-amber-300">
-              Χρειάζεται HTTPS. Στο PC άνοιξε το dashboard από <code>http://127.0.0.1:3000</code>. Στο κινητό θα
-              δουλέψει μέσω Tailscale (HTTPS).
-            </p>
+            <p className="text-sm text-amber-300">{tr("ntf.browserHttps")}</p>
           ) : (
             <div className="flex flex-wrap items-center gap-3">
               <Button type="button" variant={thisBrowser ? "ghost" : "primary"} className={cx(thisBrowser && "border border-line")} busy={busy === "browser"} onClick={toggleBrowser}>
-                {thisBrowser ? "Απενεργοποίηση σε αυτόν τον browser" : "Ενεργοποίηση σε αυτόν τον browser"}
+                {thisBrowser ? tr("ntf.browserDisable") : tr("ntf.browserEnable")}
               </Button>
-              <span className="text-sm text-muted">Εγγεγραμμένοι browsers: {saved.webpush_devices}</span>
+              <span className="text-sm text-muted">{tr("ntf.browserCount", { n: saved.webpush_devices })}</span>
             </div>
           )}
         </Channel>
@@ -397,7 +387,7 @@ export function NotificationsCard() {
 
       <div className="flex justify-end">
         <Button variant="primary" busy={busy === "save"} onClick={() => save()}>
-          Αποθήκευση ειδοποιήσεων
+          {tr("ntf.saveAll")}
         </Button>
       </div>
     </Card>

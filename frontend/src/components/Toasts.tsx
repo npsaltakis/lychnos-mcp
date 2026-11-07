@@ -1,4 +1,5 @@
 import { AlertTriangle, CheckCircle2, Info, X, XCircle } from "lucide-react";
+import { useT } from "../lib/i18n";
 import { useToasts, type ToastLevel } from "../store/toasts";
 import { cx } from "./ui";
 
@@ -11,6 +12,7 @@ const STYLE: Record<ToastLevel, { icon: typeof Info; cls: string }> = {
 
 export function Toasts() {
   const { toasts, dismiss } = useToasts();
+  const tr = useT();
   return (
     <div
       className="pointer-events-none fixed inset-x-4 bottom-20 z-50 flex flex-col items-end gap-2 md:bottom-6 md:left-auto md:right-6 md:w-96"
@@ -29,7 +31,7 @@ export function Toasts() {
               <p className="font-medium">{t.title}</p>
               {t.message && <p className="mt-0.5 text-muted">{t.message}</p>}
             </div>
-            <button onClick={() => dismiss(t.id)} aria-label="Κλείσιμο" className="text-muted hover:text-white">
+            <button onClick={() => dismiss(t.id)} aria-label={tr("common.close")} className="text-muted hover:text-white">
               <X className="size-4" />
             </button>
           </div>

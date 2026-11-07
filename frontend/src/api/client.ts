@@ -36,7 +36,7 @@ async function toError(res: Response): Promise<ApiError> {
     const err = body?.error ?? {};
     return new ApiError(res.status, err.code ?? "http_error", err.message ?? res.statusText, err.details ?? {});
   } catch {
-    return new ApiError(res.status, "http_error", res.statusText || "Σφάλμα δικτύου");
+    return new ApiError(res.status, "http_error", res.statusText || "Network error");
   }
 }
 
@@ -51,7 +51,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch {
-    throw new ApiError(0, "network_error", "Ο server δεν απαντά. Τρέχει το backend;");
+    throw new ApiError(0, "network_error", "Network error");
   }
   if (!res.ok) {
     const error = await toError(res);
@@ -99,6 +99,7 @@ export const api = {
   location: () => request<Location | null>("GET", "/settings/location"),
   setLocation: (loc: Location) => request<Location>("PUT", "/settings/location", loc),
   activity: (limit = 100) => request<ActivityEntry[]>("GET", `/activity?limit=${limit}`),
+  activityQuery: (query: string) => request<ActivityEntry[]>("GET", `/activity?${query}`),
   notifications: () => request<NotificationView>("GET", "/notifications"),
   saveNotifications: (body: NotificationSettings & { secrets: Record<string, string | null> }) =>
     request<NotificationView>("PUT", "/notifications", body),

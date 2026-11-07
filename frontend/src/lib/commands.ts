@@ -2,11 +2,7 @@ import { ApiError, api } from "../api/client";
 import type { Command, CommandResult } from "../api/types";
 import { useDevices } from "../store/devices";
 import { notify } from "../store/toasts";
-
-const OUTCOME_TEXT = {
-  unconfirmed: "Στάλθηκε, αλλά η συσκευή δεν μπορεί να επιβεβαιώσει",
-  mismatch: "Η συσκευή αναφέρει διαφορετική κατάσταση",
-} as const;
+import { t } from "./i18n";
 
 // Per device: at most one request in flight; while busy only the newest command is kept.
 const inFlight = new Set<string>();
@@ -47,13 +43,12 @@ function deviceName(id: string): string {
 }
 
 export function reportOutcome(result: CommandResult): void {
-  if (result.outcome === "unconfirmed" || result.outcome === "mismatch") {
-    notify("warning", deviceName(result.device_id), OUTCOME_TEXT[result.outcome]);
-  }
+  if (result.outcome === "unconfirmed") notify("warning", deviceName(result.device_id), t("outcome.unconfirmedLong"));
+  if (result.outcome === "mismatch") notify("warning", deviceName(result.device_id), t("outcome.mismatchLong"));
 }
 
 export function reportError(deviceId: string | null, err: unknown): void {
-  const title = deviceId ? deviceName(deviceId) : "Σφάλμα";
-  if (err instanceof ApiError) notify("error", title, err.message);
+  const title = deviceId ? deviceName(deviceId) : t("common.error");
+  if (err instanceof ApiError) notify("error", title, err.code === "network_error" ? t("common.networkError") : err.message);
   else notify("error", title, String(err));
 }

@@ -7,6 +7,7 @@ import { Button, Card, Empty, PageHeader, Toggle, cx } from "../components/ui";
 import { useAutomations, useRooms, useScenes } from "../hooks/useData";
 import { hexToRgb, rgbToHex } from "../lib/color";
 import { reportError } from "../lib/commands";
+import { t, useT, type MessageKey } from "../lib/i18n";
 import { dayShort, describeDays, formatAgo, formatUpcoming } from "../lib/time";
 import { sortedViews, useDevices } from "../store/devices";
 import { notify } from "../store/toasts";
@@ -30,15 +31,7 @@ interface Form {
   fadeWhite: boolean;
 }
 
-const KIND_LABEL: Record<Kind, string> = {
-  scene: "Ενεργοποίηση σκηνής",
-  on: "Άναμμα",
-  off: "Σβήσιμο",
-  color: "Χρώμα",
-  brightness: "Φωτεινότητα",
-  white: "Λευκό (θερμοκρασία)",
-  fade: "Ξύπνημα με φως (σταδιακά)",
-};
+const KINDS: Kind[] = ["scene", "on", "off", "color", "brightness", "white", "fade"];
 
 const EMPTY: Form = {
   name: "",
@@ -56,8 +49,8 @@ const EMPTY: Form = {
   fadeWhite: true,
 };
 
-function targetToString(t: Target): string {
-  return t.kind === "all" ? "all" : `${t.kind}:${t.id}`;
+function targetToString(target: Target): string {
+  return target.kind === "all" ? "all" : `${target.kind}:${target.id}`;
 }
 
 function stringToTarget(s: string): Target {
@@ -111,13 +104,7 @@ function toInput(f: Form, enabled: boolean): AutomationInput {
   const target = stringToTarget(f.target);
   if (f.kind === "scene") action = { type: "scene", scene_id: f.sceneId };
   else if (f.kind === "fade")
-    action = {
-      type: "fade",
-      target,
-      to_brightness: f.brightness,
-      duration_min: f.fadeMinutes,
-      color_temp_k: f.fadeWhite ? f.kelvin : null,
-    };
+    action = { type: "fade", target, to_brightness: f.brightness, duration_min: f.fadeMinutes, color_temp_k: f.fadeWhite ? f.kelvin : null };
   else {
     const command: Command =
       f.kind === "on" || f.kind === "off"
@@ -132,15 +119,8 @@ function toInput(f: Form, enabled: boolean): AutomationInput {
   return { name: f.name.trim(), enabled, trigger, action };
 }
 
-function Editor({
-  initial,
-  location,
-  onDone,
-}: {
-  initial: Automation | null;
-  location: Location | null;
-  onDone: () => void;
-}) {
+function Editor({ initial, location, onDone }: { initial: Automation | null; location: Location | null; onDone: () => void }) {
+  const tr = useT();
   const [f, setF] = useState<Form>(initial ? fromAutomation(initial) : EMPTY);
   const [saving, setSaving] = useState(false);
   const rooms = useRooms();
@@ -149,17 +129,18 @@ function Editor({
   const set = (patch: Partial<Form>) => setF((cur) => ({ ...cur, ...patch }));
   const input = "min-h-10 w-full rounded-xl border border-line bg-panel-2 px-3 text-sm focus:border-accent focus:outline-none";
   const needsLocation = f.when !== "time" && !location;
+  const event = tr(f.when === "sunrise" ? "auto.theSunrise" : "auto.theSunset");
 
   const save = async () => {
-    if (!f.name.trim()) return notify("warning", "Δώσε όνομα στον αυτοματισμό");
-    if (!f.days.length) return notify("warning", "Επίλεξε τουλάχιστον μία ημέρα");
-    if (f.kind === "scene" && !f.sceneId) return notify("warning", "Επίλεξε σκηνή");
+    if (!f.name.trim()) return notify("warning", t("auto.needName"));
+    if (!f.days.length) return notify("warning", t("auto.needDay"));
+    if (f.kind === "scene" && !f.sceneId) return notify("warning", t("auto.needScene"));
     setSaving(true);
     try {
       const body = toInput(f, initial?.enabled ?? true);
       if (initial) await api.updateAutomation(initial.id, body);
       else await api.createAutomation(body);
-      notify("success", "Ο αυτοματισμός αποθηκεύτηκε", body.name);
+      notify("success", t("auto.saved"), body.name);
       onDone();
     } catch (err) {
       reportError(null, err);
@@ -171,18 +152,18 @@ function Editor({
   return (
     <Card className="space-y-5">
       <label className="block text-sm">
-        <span className="mb-1 block text-muted">Όνομα</span>
-        <input id="auto-name" className={input} maxLength={64} value={f.name} placeholder="π.χ. Βραδινό φως" onChange={(e) => set({ name: e.target.value })} />
+        <span className="mb-1 block text-muted">{tr("scenes.name")}</span>
+        <input id="auto-name" className={input} maxLength={64} value={f.name} placeholder={tr("auto.namePlaceholder")} onChange={(e) => set({ name: e.target.value })} />
       </label>
 
       <fieldset className="space-y-3">
-        <legend className="mb-1 text-sm text-muted">Πότε</legend>
+        <legend className="mb-1 text-sm text-muted">{tr("auto.when")}</legend>
         <div className="grid grid-cols-3 gap-1 rounded-xl bg-panel-2 p-1 text-sm">
           {(
             [
-              ["time", "Ώρα", CalendarClock],
-              ["sunrise", "Ανατολή", Sunrise],
-              ["sunset", "Δύση", Sunset],
+              ["time", "auto.time", CalendarClock],
+              ["sunrise", "auto.sunrise", Sunrise],
+              ["sunset", "auto.sunset", Sunset],
             ] as const
           ).map(([key, label, Icon]) => (
             <button
@@ -190,40 +171,30 @@ function Editor({
               type="button"
               aria-pressed={f.when === key}
               onClick={() => set({ when: key })}
-              className={cx(
-                "inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg",
-                f.when === key ? "bg-line text-white" : "text-muted hover:text-white",
-              )}
+              className={cx("inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg", f.when === key ? "bg-line text-white" : "text-muted hover:text-white")}
             >
-              <Icon className="size-4" aria-hidden /> {label}
+              <Icon className="size-4" aria-hidden /> {tr(label)}
             </button>
           ))}
         </div>
         {f.when === "time" ? (
-          <input id="auto-time" type="time" className={cx(input, "w-40")} value={f.time} onChange={(e) => set({ time: e.target.value })} aria-label="Ώρα" />
+          <input id="auto-time" type="time" className={cx(input, "w-40")} value={f.time} onChange={(e) => set({ time: e.target.value })} aria-label={tr("auto.time")} />
         ) : (
           <label className="flex flex-wrap items-center gap-2 text-sm">
-            <input
-              id="auto-offset"
-              type="number"
-              min={-240}
-              max={240}
-              step={5}
-              className={cx(input, "w-28")}
-              value={f.offset}
-              onChange={(e) => set({ offset: Number(e.target.value) })}
-            />
-            <span className="text-muted">
-              λεπτά {f.offset < 0 ? "πριν" : "μετά"} τη{f.when === "sunrise" ? "ν ανατολή" : " δύση"} (αρνητικό = πριν)
-            </span>
+            <input id="auto-offset" type="number" min={-240} max={240} step={5} className={cx(input, "w-28")} value={f.offset} onChange={(e) => set({ offset: Number(e.target.value) })} />
+            <span className="text-muted">{tr(f.offset < 0 ? "auto.offsetBefore" : "auto.offsetAfter", { event })}</span>
           </label>
         )}
         {needsLocation && (
           <p className="text-sm text-amber-300">
-            Για ανατολή/δύση όρισε πρώτα την τοποθεσία σου στις <Link to="/settings" className="underline">Ρυθμίσεις</Link>.
+            {tr("auto.needLocationBefore")}
+            <Link to="/settings" className="underline">
+              {tr("nav.settings")}
+            </Link>
+            .
           </p>
         )}
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Ημέρες">
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label={tr("auto.days")}>
           {[0, 1, 2, 3, 4, 5, 6].map((d) => {
             const on = f.days.includes(d);
             return (
@@ -232,10 +203,7 @@ function Editor({
                 type="button"
                 aria-pressed={on}
                 onClick={() => set({ days: on ? f.days.filter((x) => x !== d) : [...f.days, d].sort() })}
-                className={cx(
-                  "min-h-9 w-12 rounded-lg border text-sm",
-                  on ? "border-accent bg-accent/15 text-white" : "border-line text-muted hover:text-white",
-                )}
+                className={cx("min-h-9 w-12 rounded-lg border text-sm", on ? "border-accent bg-accent/15 text-white" : "border-line text-muted hover:text-white")}
               >
                 {dayShort(d)}
               </button>
@@ -246,18 +214,18 @@ function Editor({
       </fieldset>
 
       <fieldset className="space-y-3">
-        <legend className="mb-1 text-sm text-muted">Τι θα γίνει</legend>
-        <select id="auto-kind" className={input} value={f.kind} onChange={(e) => set({ kind: e.target.value as Kind })} aria-label="Ενέργεια">
-          {(Object.keys(KIND_LABEL) as Kind[]).map((k) => (
+        <legend className="mb-1 text-sm text-muted">{tr("auto.what")}</legend>
+        <select id="auto-kind" className={input} value={f.kind} onChange={(e) => set({ kind: e.target.value as Kind })} aria-label={tr("auto.action")}>
+          {KINDS.map((k) => (
             <option key={k} value={k}>
-              {KIND_LABEL[k]}
+              {tr(`auto.kind.${k}` as MessageKey)}
             </option>
           ))}
         </select>
 
         {f.kind === "scene" ? (
-          <select id="auto-scene" className={input} value={f.sceneId} onChange={(e) => set({ sceneId: e.target.value })} aria-label="Σκηνή">
-            <option value="">Επίλεξε σκηνή…</option>
+          <select id="auto-scene" className={input} value={f.sceneId} onChange={(e) => set({ sceneId: e.target.value })} aria-label={tr("nav.scenes")}>
+            <option value="">{tr("auto.chooseScene")}</option>
             {scenes.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
@@ -265,10 +233,10 @@ function Editor({
             ))}
           </select>
         ) : (
-          <select id="auto-target" className={input} value={f.target} onChange={(e) => set({ target: e.target.value })} aria-label="Σε ποια φώτα">
-            <option value="all">Όλα τα φώτα</option>
+          <select id="auto-target" className={input} value={f.target} onChange={(e) => set({ target: e.target.value })} aria-label={tr("auto.whichLights")}>
+            <option value="all">{tr("auto.allLights")}</option>
             {rooms.length > 0 && (
-              <optgroup label="Δωμάτια">
+              <optgroup label={tr("auto.rooms")}>
                 {rooms.map((r) => (
                   <option key={r.id} value={`room:${r.id}`}>
                     {r.name}
@@ -276,7 +244,7 @@ function Editor({
                 ))}
               </optgroup>
             )}
-            <optgroup label="Συσκευές">
+            <optgroup label={tr("auto.devices")}>
               {devices.map((v) => (
                 <option key={v.device.id} value={`device:${v.device.id}`}>
                   {v.device.name}
@@ -287,12 +255,12 @@ function Editor({
         )}
 
         {f.kind === "color" && (
-          <input type="color" aria-label="Χρώμα" value={f.hex} onChange={(e) => set({ hex: e.target.value })} className="h-10 w-20 cursor-pointer rounded-lg border border-line bg-transparent" />
+          <input type="color" aria-label={tr("card.color")} value={f.hex} onChange={(e) => set({ hex: e.target.value })} className="h-10 w-20 cursor-pointer rounded-lg border border-line bg-transparent" />
         )}
         {(f.kind === "brightness" || f.kind === "fade") && (
           <label className="block text-sm">
             <span className="mb-1 flex justify-between text-muted">
-              {f.kind === "fade" ? "Τελική φωτεινότητα" : "Φωτεινότητα"}
+              {tr(f.kind === "fade" ? "auto.finalBrightness" : "card.brightness")}
               <span className="tabular-nums text-gray-200">{f.brightness}%</span>
             </span>
             <input type="range" className="slider" min={f.kind === "fade" ? 2 : 1} max={100} value={f.brightness} onChange={(e) => set({ brightness: Number(e.target.value) })} />
@@ -302,20 +270,20 @@ function Editor({
           <>
             <label className="block text-sm">
               <span className="mb-1 flex justify-between text-muted">
-                Διάρκεια <span className="tabular-nums text-gray-200">{f.fadeMinutes} λεπτά</span>
+                {tr("auto.duration")} <span className="tabular-nums text-gray-200">{tr("auto.minutes", { n: f.fadeMinutes })}</span>
               </span>
               <input type="range" className="slider" min={1} max={60} value={f.fadeMinutes} onChange={(e) => set({ fadeMinutes: Number(e.target.value) })} />
             </label>
             <label className="inline-flex items-center gap-2 text-sm">
               <input type="checkbox" className="size-4 accent-amber-400" checked={f.fadeWhite} onChange={(e) => set({ fadeWhite: e.target.checked })} />
-              Σε λευκό φως {f.fadeWhite && `${f.kelvin} K`}
+              {tr("auto.inWhite")} {f.fadeWhite && `${f.kelvin} K`}
             </label>
           </>
         )}
         {(f.kind === "white" || (f.kind === "fade" && f.fadeWhite)) && (
           <label className="block text-sm">
             <span className="mb-1 flex justify-between text-muted">
-              Θερμοκρασία <span className="tabular-nums text-gray-200">{f.kelvin} K</span>
+              {tr("scenes.temperature")} <span className="tabular-nums text-gray-200">{f.kelvin} K</span>
             </span>
             <input type="range" className="slider" min={2000} max={6500} step={50} value={f.kelvin} onChange={(e) => set({ kelvin: Number(e.target.value) })} />
           </label>
@@ -324,10 +292,10 @@ function Editor({
 
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onDone}>
-          Ακύρωση
+          {tr("common.cancel")}
         </Button>
         <Button variant="primary" busy={saving} disabled={needsLocation} onClick={save}>
-          Αποθήκευση
+          {tr("common.save")}
         </Button>
       </div>
     </Card>
@@ -338,21 +306,25 @@ function describe(a: Automation, names: Record<string, string>, rooms: Record<st
   const when =
     a.trigger.type === "time"
       ? a.trigger.time
-      : `${a.trigger.event === "sunrise" ? "Ανατολή" : "Δύση"}${a.trigger.offset_min ? ` ${a.trigger.offset_min > 0 ? "+" : ""}${a.trigger.offset_min}′` : ""}`;
+      : `${t(a.trigger.event === "sunrise" ? "auto.sunrise" : "auto.sunset")}${a.trigger.offset_min ? ` ${a.trigger.offset_min > 0 ? "+" : ""}${a.trigger.offset_min}′` : ""}`;
   const act = a.action;
   let what: string;
-  if (act.type === "scene") what = `σκηνή «${scenes[act.scene_id] ?? "?"}»`;
+  if (act.type === "scene") what = t("auto.desc.scene", { name: scenes[act.scene_id] ?? "?" });
   else {
-    const t = act.target;
-    const target = t.kind === "all" ? "όλα τα φώτα" : t.kind === "room" ? (rooms[t.id!] ?? "δωμάτιο") : (names[t.id!] ?? "συσκευή");
-    if (act.type === "fade") what = `ξύπνημα με φως έως ${act.to_brightness}% σε ${act.duration_min}′ · ${target}`;
+    const tg = act.target;
+    const target =
+      tg.kind === "all" ? t("auto.desc.allLights") : tg.kind === "room" ? (rooms[tg.id!] ?? t("auto.desc.room")) : (names[tg.id!] ?? t("auto.desc.device"));
+    if (act.type === "fade") what = t("auto.desc.fade", { to: act.to_brightness, min: act.duration_min, target });
     else {
       const c = act.command;
       const verb =
-        c.type === "set_power" ? (c.on ? "άναμμα" : "σβήσιμο")
-        : c.type === "set_color" ? `χρώμα ${rgbToHex(c.color)}`
-        : c.type === "set_brightness" ? `φωτεινότητα ${c.brightness}%`
-        : `λευκό ${c.kelvin} K`;
+        c.type === "set_power"
+          ? t(c.on ? "auto.desc.on" : "auto.desc.off")
+          : c.type === "set_color"
+            ? t("auto.desc.color", { hex: rgbToHex(c.color) })
+            : c.type === "set_brightness"
+              ? t("auto.desc.brightness", { value: c.brightness })
+              : t("auto.desc.white", { k: c.kelvin });
       what = `${verb} · ${target}`;
     }
   }
@@ -360,6 +332,7 @@ function describe(a: Automation, names: Record<string, string>, rooms: Record<st
 }
 
 export function Automations() {
+  const tr = useT();
   const automations = useAutomations();
   const rooms = useRooms();
   const scenes = useScenes();
@@ -390,12 +363,12 @@ export function Automations() {
   return (
     <>
       <PageHeader
-        title="Αυτοματισμοί"
-        subtitle="Προγράμματα με ώρα ή ανατολή/δύση. Τρέχουν στην ώρα του υπολογιστή όπου είναι το backend."
+        title={tr("auto.title")}
+        subtitle={tr("auto.subtitle")}
         actions={
           editing === null && (
             <Button variant="primary" onClick={() => setEditing("new")}>
-              <Plus className="size-4" aria-hidden /> Νέος αυτοματισμός
+              <Plus className="size-4" aria-hidden /> {tr("auto.new")}
             </Button>
           )
         }
@@ -403,9 +376,8 @@ export function Automations() {
       {editing !== null ? (
         <Editor key={editing === "new" ? "new" : editing.id} initial={editing === "new" ? null : editing} location={location} onDone={() => setEditing(null)} />
       ) : automations.length === 0 ? (
-        <Empty icon={<CalendarClock className="size-8" />} title="Κανένας αυτοματισμός ακόμα">
-          Π.χ. «άναψε το σαλόνι στη δύση», «σβήσε όλα στις 00:30» ή «ξύπνημα με φως στις 07:00 τις καθημερινές».
-          Μπορείς να τους φτιάξεις και ζητώντας το από το Claude.
+        <Empty icon={<CalendarClock className="size-8" />} title={tr("auto.emptyTitle")}>
+          {tr("auto.emptyText")}
         </Empty>
       ) : (
         <div className="space-y-3">
@@ -420,29 +392,29 @@ export function Automations() {
                     <p className="mt-1 text-sm text-muted">{describe(a, names, roomNames, sceneNames)}</p>
                     <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
                       <span>
-                        Επόμενη: <span className="text-gray-200">{a.enabled ? formatUpcoming(a.next_run_at) : "σε παύση"}</span>
+                        {tr("auto.next")} <span className="text-gray-200">{a.enabled ? formatUpcoming(a.next_run_at) : tr("auto.paused")}</span>
                       </span>
                       {result && (
                         <span className={ok ? "text-emerald-400" : result.outcome === "failed" ? "text-red-400" : "text-amber-300"} title={result.message}>
-                          Τελευταία: {formatAgo(a.last_run_at)} · {result.message}
+                          {tr("auto.last")} {formatAgo(a.last_run_at)} · {result.message}
                         </span>
                       )}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Toggle label={`${a.name} ενεργός`} checked={a.enabled} pending={busy === `en-${a.id}`} onChange={(on) => act(`en-${a.id}`, () => api.setAutomationEnabled(a.id, on))} />
-                    <Button variant="ghost" aria-label="Εκτέλεση τώρα" title="Εκτέλεση τώρα" busy={busy === `run-${a.id}`} onClick={() => act(`run-${a.id}`, () => api.runAutomation(a.id))}>
+                    <Toggle label={tr("auto.enabledAria", { name: a.name })} checked={a.enabled} pending={busy === `en-${a.id}`} onChange={(on) => act(`en-${a.id}`, () => api.setAutomationEnabled(a.id, on))} />
+                    <Button variant="ghost" aria-label={tr("auto.runNow")} title={tr("auto.runNow")} busy={busy === `run-${a.id}`} onClick={() => act(`run-${a.id}`, () => api.runAutomation(a.id))}>
                       <Play className="size-4" />
                     </Button>
-                    <Button variant="ghost" aria-label="Επεξεργασία" onClick={() => setEditing(a)}>
+                    <Button variant="ghost" aria-label={tr("common.edit")} onClick={() => setEditing(a)}>
                       <Pencil className="size-4" />
                     </Button>
                     <Button
                       variant="danger"
-                      aria-label="Διαγραφή"
+                      aria-label={tr("common.delete")}
                       busy={busy === `del-${a.id}`}
                       onClick={() => {
-                        if (confirm(`Διαγραφή του αυτοματισμού «${a.name}»;`)) act(`del-${a.id}`, () => api.deleteAutomation(a.id));
+                        if (confirm(tr("auto.confirmDelete", { name: a.name }))) act(`del-${a.id}`, () => api.deleteAutomation(a.id));
                       }}
                     >
                       <Trash2 className="size-4" />

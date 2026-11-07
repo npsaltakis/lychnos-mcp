@@ -17,7 +17,13 @@ from app.domain.models import (
     PendingCommand,
     utcnow,
 )
+import logging
+from collections.abc import Callable
+
 from app.services.events import EventBus, EventType
+
+
+ChangeListener = Callable[[str, DeviceState, DeviceState, Availability, Availability], None]
 
 
 class StateStore:
@@ -25,6 +31,9 @@ class StateStore:
         self._bus = bus
         self._offline_after = offline_after_failures
         self._runtimes: dict[str, DeviceRuntime] = {}
+        # Called with (device_id, old_state, new_state, old_availability, new_availability)
+        # whenever the confirmed state or the availability changes.
+        self.listeners: list[ChangeListener] = []
 
     # -- reads
     def get(self, device_id: str) -> DeviceRuntime:
@@ -54,6 +63,7 @@ class StateStore:
         that only carry changed fields) are merged into it.
         """
         runtime = self._runtime(device_id)
+        old_state, old_availability = runtime.state, runtime.availability
         now = utcnow()
         runtime.state = runtime.state.merged_with(reported) if partial else reported
         runtime.state_confirmed_at = now
@@ -62,23 +72,39 @@ class StateStore:
         runtime.consecutive_failures = 0
         runtime.last_error = None
         self._emit(device_id, runtime)
+        self._notify(device_id, old_state, runtime.state, old_availability, runtime.availability)
 
     def mark_reachable(self, device_id: str) -> None:
         """The device accepted a command but reported no state."""
         runtime = self._runtime(device_id)
+        old_availability = runtime.availability
         runtime.last_seen_at = utcnow()
         runtime.availability = Availability.ONLINE
         runtime.consecutive_failures = 0
         runtime.last_error = None
         self._emit(device_id, runtime)
+        self._notify(device_id, runtime.state, runtime.state, old_availability, runtime.availability)
 
     def record_failure(self, device_id: str, error: AppError) -> None:
         runtime = self._runtime(device_id)
+        old_availability = runtime.availability
         runtime.consecutive_failures += 1
         runtime.last_error = ErrorInfo(code=error.code, message=error.message)
         if runtime.consecutive_failures >= self._offline_after:
             runtime.availability = Availability.OFFLINE
         self._emit(device_id, runtime)
+        self._notify(device_id, runtime.state, runtime.state, old_availability, runtime.availability)
+
+    def _notify(
+        self, device_id: str, old: DeviceState, new: DeviceState, old_av: Availability, new_av: Availability
+    ) -> None:
+        if old == new and old_av == new_av:
+            return
+        for listener in self.listeners:
+            try:
+                listener(device_id, old, new, old_av, new_av)
+            except Exception:
+                logging.getLogger(__name__).exception("state change listener failed")
 
     def remove(self, device_id: str) -> None:
         self._runtimes.pop(device_id, None)

@@ -1,21 +1,18 @@
 import { Check, DoorOpen, Pencil, Plus, RefreshCw, Search, Trash2, TriangleAlert, Wifi, X } from "lucide-react";
 import { useState } from "react";
 import { api } from "../api/client";
-import type { Capability, DeviceView, Room } from "../api/types";
+import type { DeviceView, Room } from "../api/types";
 import { Button, Card, Empty, PageHeader, StatusDot, cx } from "../components/ui";
 import { useRooms } from "../hooks/useData";
 import { reportError } from "../lib/commands";
+import { t, useT, type MessageKey } from "../lib/i18n";
 import { sortedViews, useDevices } from "../store/devices";
 import { notify } from "../store/toasts";
 
-const CAP_LABEL: Record<Capability, string> = {
-  power: "ON/OFF",
-  brightness: "Φωτεινότητα",
-  color_rgb: "RGB",
-  color_temp: "Θερμοκρασία",
-};
+const input = "min-h-10 w-full rounded-xl border border-line bg-panel-2 px-3 text-sm focus:border-accent focus:outline-none";
 
 function RoomsManager({ rooms, views }: { rooms: Room[]; views: DeviceView[] }) {
+  const tr = useT();
   const [newName, setNewName] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
@@ -32,14 +29,12 @@ function RoomsManager({ rooms, views }: { rooms: Room[]; views: DeviceView[] }) 
       setBusy(null);
     }
   };
-  const input =
-    "min-h-10 w-full rounded-xl border border-line bg-panel-2 px-3 text-sm focus:border-accent focus:outline-none";
 
   return (
     <Card>
       <div className="mb-3 flex items-center gap-2">
         <DoorOpen className="size-5 text-accent" aria-hidden />
-        <h2 className="font-semibold">Δωμάτια</h2>
+        <h2 className="font-semibold">{tr("dev.rooms")}</h2>
       </div>
       <form
         className="flex gap-2"
@@ -52,14 +47,14 @@ function RoomsManager({ rooms, views }: { rooms: Room[]; views: DeviceView[] }) 
         <input
           id="new-room"
           className={input}
-          placeholder="Νέο δωμάτιο, π.χ. Σαλόνι"
+          placeholder={tr("dev.newRoom")}
           maxLength={40}
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
-          aria-label="Όνομα νέου δωματίου"
+          aria-label={tr("dev.newRoomAria")}
         />
         <Button type="submit" variant="primary" busy={busy === "new"} disabled={!newName.trim()}>
-          <Plus className="size-4" aria-hidden /> Προσθήκη
+          <Plus className="size-4" aria-hidden /> {tr("common.add")}
         </Button>
       </form>
       {rooms.length > 0 && (
@@ -76,11 +71,11 @@ function RoomsManager({ rooms, views }: { rooms: Room[]; views: DeviceView[] }) 
                       if (editName.trim()) act(room.id, () => api.updateRoom(room.id, editName.trim(), room.icon), () => setEditing(null));
                     }}
                   >
-                    <input autoFocus className={input} value={editName} maxLength={40} onChange={(e) => setEditName(e.target.value)} aria-label="Νέο όνομα δωματίου" />
-                    <Button type="submit" variant="primary" busy={busy === room.id} aria-label="Αποθήκευση">
+                    <input autoFocus className={input} value={editName} maxLength={40} onChange={(e) => setEditName(e.target.value)} aria-label={tr("dev.renameRoomAria")} />
+                    <Button type="submit" variant="primary" busy={busy === room.id} aria-label={tr("common.save")}>
                       <Check className="size-4" />
                     </Button>
-                    <Button type="button" variant="ghost" onClick={() => setEditing(null)} aria-label="Ακύρωση">
+                    <Button type="button" variant="ghost" onClick={() => setEditing(null)} aria-label={tr("common.cancel")}>
                       <X className="size-4" />
                     </Button>
                   </form>
@@ -88,14 +83,12 @@ function RoomsManager({ rooms, views }: { rooms: Room[]; views: DeviceView[] }) 
                   <>
                     <span>
                       <span className="font-medium">{room.name}</span>
-                      <span className="ml-2 text-sm text-muted">
-                        {count} {count === 1 ? "συσκευή" : "συσκευές"}
-                      </span>
+                      <span className="ml-2 text-sm text-muted">{count === 1 ? tr("dev.deviceCount1") : tr("dev.deviceCount", { n: count })}</span>
                     </span>
                     <span className="flex gap-1">
                       <Button
                         variant="ghost"
-                        aria-label={`Μετονομασία ${room.name}`}
+                        aria-label={`${tr("common.rename")} ${room.name}`}
                         onClick={() => {
                           setEditing(room.id);
                           setEditName(room.name);
@@ -105,11 +98,10 @@ function RoomsManager({ rooms, views }: { rooms: Room[]; views: DeviceView[] }) 
                       </Button>
                       <Button
                         variant="danger"
-                        aria-label={`Διαγραφή ${room.name}`}
+                        aria-label={`${tr("common.delete")} ${room.name}`}
                         busy={busy === `del-${room.id}`}
                         onClick={() => {
-                          if (confirm(`Να διαγραφεί το δωμάτιο «${room.name}»; Οι συσκευές του μένουν, απλώς χωρίς δωμάτιο.`))
-                            act(`del-${room.id}`, () => api.deleteRoom(room.id));
+                          if (confirm(tr("dev.confirmDeleteRoom", { name: room.name }))) act(`del-${room.id}`, () => api.deleteRoom(room.id));
                         }}
                       >
                         <Trash2 className="size-4" />
@@ -127,16 +119,13 @@ function RoomsManager({ rooms, views }: { rooms: Room[]; views: DeviceView[] }) 
 }
 
 function DeviceRow({ view, rooms }: { view: DeviceView; rooms: Room[] }) {
+  const tr = useT();
   const { device, runtime } = view;
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(device.name);
   const [busy, setBusy] = useState<string | null>(null);
   const setup =
-    device.metadata.has_devicekey === false
-      ? "Λείπει το κλειδί eWeLink: τρέξε το setup (δες Ρυθμίσεις)"
-      : device.metadata.setup_required
-        ? "Αυτός ο τύπος συσκευής δεν υποστηρίζεται ακόμα"
-        : undefined;
+    device.metadata.has_devicekey === false ? tr("dev.missingKey") : device.metadata.setup_required ? tr("dev.unsupported") : undefined;
   const ct = device.capabilities.color_temp_range;
 
   const act = async (key: string, fn: () => Promise<unknown>) => {
@@ -168,43 +157,34 @@ function DeviceRow({ view, rooms }: { view: DeviceView; rooms: Room[] }) {
                 if (name.trim()) save();
               }}
             >
-              <input
-                autoFocus
-                value={name}
-                maxLength={64}
-                onChange={(e) => setName(e.target.value)}
-                aria-label="Όνομα συσκευής"
-                className="min-h-10 w-full rounded-xl border border-line bg-panel-2 px-3 text-sm focus:border-accent focus:outline-none"
-              />
-              <Button type="submit" variant="primary" busy={busy === "name"} aria-label="Αποθήκευση">
+              <input autoFocus value={name} maxLength={64} onChange={(e) => setName(e.target.value)} aria-label={tr("dev.nameAria")} className={input} />
+              <Button type="submit" variant="primary" busy={busy === "name"} aria-label={tr("common.save")}>
                 <Check className="size-4" />
               </Button>
-              <Button type="button" variant="ghost" onClick={() => setEditing(false)} aria-label="Ακύρωση">
+              <Button type="button" variant="ghost" onClick={() => setEditing(false)} aria-label={tr("common.cancel")}>
                 <X className="size-4" />
               </Button>
             </form>
           ) : (
             <div className="flex items-center gap-2">
               <h3 className="truncate font-semibold">{device.name}</h3>
-              <button onClick={() => setEditing(true)} className="text-muted hover:text-white" aria-label="Μετονομασία">
+              <button onClick={() => setEditing(true)} className="text-muted hover:text-white" aria-label={tr("common.rename")}>
                 <Pencil className="size-4" />
               </button>
             </div>
           )}
           <p className="mt-1 text-xs text-muted">
-            {device.manufacturer} {device.model ?? ""} · {device.address ?? "χωρίς IP"} · {device.provider}
+            {device.manufacturer} {device.model ?? ""} · {device.address ?? tr("dev.noIp")} · {device.provider}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <StatusDot availability={runtime.availability} />
             {device.capabilities.supported.map((c) => (
               <span key={c} className="rounded-md bg-panel-2 px-2 py-0.5 text-xs text-gray-300">
-                {CAP_LABEL[c]}
+                {tr(`dev.cap.${c}` as MessageKey)}
                 {c === "color_temp" && ct ? ` ${ct.min_k}–${ct.max_k}K` : ""}
               </span>
             ))}
-            {device.capabilities.supports_push && (
-              <span className="rounded-md bg-sky-500/10 px-2 py-0.5 text-xs text-sky-300">Push ενημερώσεις</span>
-            )}
+            {device.capabilities.supports_push && <span className="rounded-md bg-sky-500/10 px-2 py-0.5 text-xs text-sky-300">{tr("dev.push")}</span>}
           </div>
           {setup && (
             <p className="mt-2 inline-flex items-center gap-1.5 text-sm text-amber-300">
@@ -222,16 +202,16 @@ function DeviceRow({ view, rooms }: { view: DeviceView; rooms: Room[] }) {
               disabled={busy !== null}
               onChange={(e) => act("reg", () => api.updateDevice(device.id, { registered: e.target.checked }))}
             />
-            Έλεγχος από το dashboard
+            {tr("dev.registered")}
           </label>
           <select
-            aria-label={`Δωμάτιο για ${device.name}`}
+            aria-label={tr("dev.roomFor", { name: device.name })}
             value={device.room_id ?? ""}
             disabled={busy !== null}
             onChange={(e) => act("room", () => api.setDeviceRoom(device.id, e.target.value || null))}
             className="min-h-10 rounded-xl border border-line bg-panel-2 px-3 text-sm focus:border-accent focus:outline-none"
           >
-            <option value="">Χωρίς δωμάτιο</option>
+            <option value="">{tr("room.none")}</option>
             {rooms.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.name}
@@ -240,8 +220,8 @@ function DeviceRow({ view, rooms }: { view: DeviceView; rooms: Room[] }) {
           </select>
           <Button
             variant="ghost"
-            title="Ανάγνωση κατάστασης από τη συσκευή"
-            aria-label="Ανανέωση κατάστασης"
+            title={tr("dev.refreshTitle")}
+            aria-label={tr("dev.refreshAria")}
             disabled={!device.registered || !device.capabilities.supports_state_query}
             busy={busy === "refresh"}
             onClick={() => act("refresh", () => api.refreshState(device.id))}
@@ -250,11 +230,10 @@ function DeviceRow({ view, rooms }: { view: DeviceView; rooms: Room[] }) {
           </Button>
           <Button
             variant="danger"
-            aria-label="Διαγραφή"
+            aria-label={tr("common.delete")}
             busy={busy === "del"}
             onClick={() => {
-              if (confirm(`Να αφαιρεθεί η «${device.name}» από τη λίστα; (Θα ξαναβρεθεί με νέα αναζήτηση.)`))
-                act("del", () => api.deleteDevice(device.id));
+              if (confirm(tr("dev.confirmDelete", { name: device.name }))) act("del", () => api.deleteDevice(device.id));
             }}
           >
             <Trash2 className="size-4" />
@@ -266,6 +245,7 @@ function DeviceRow({ view, rooms }: { view: DeviceView; rooms: Room[] }) {
 }
 
 export function Devices() {
+  const tr = useT();
   const devices = useDevices((s) => s.devices);
   const rooms = useRooms();
   const [scanning, setScanning] = useState(false);
@@ -275,7 +255,7 @@ export function Devices() {
     setScanning(true);
     try {
       const found = await api.scan(4);
-      notify("success", "Αναζήτηση ολοκληρώθηκε", `Βρέθηκαν ${found.length} συσκευές`);
+      notify("success", t("dev.scanDone"), t("dev.found", { n: found.length }));
     } catch (err) {
       reportError(null, err);
     } finally {
@@ -286,17 +266,17 @@ export function Devices() {
   return (
     <>
       <PageHeader
-        title="Συσκευές"
-        subtitle="Μόνο οι καταχωρημένες συσκευές δέχονται εντολές από το dashboard και το Claude."
+        title={tr("dev.title")}
+        subtitle={tr("dev.subtitle")}
         actions={
           <Button variant="primary" busy={scanning} onClick={scan}>
-            <Search className="size-4" aria-hidden /> Αναζήτηση στο δίκτυο
+            <Search className="size-4" aria-hidden /> {tr("dev.scan")}
           </Button>
         }
       />
       {views.length === 0 ? (
-        <Empty icon={<Wifi className="size-8" />} title="Καμία συσκευή ακόμα">
-          Πάτα «Αναζήτηση στο δίκτυο». Η Govee χρειάζεται ενεργό «LAN Control» στην εφαρμογή Govee Home.
+        <Empty icon={<Wifi className="size-8" />} title={tr("dev.emptyTitle")}>
+          {tr("dev.emptyText")}
         </Empty>
       ) : (
         <div className="space-y-6">

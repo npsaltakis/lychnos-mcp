@@ -67,6 +67,8 @@ class Settings(BaseSettings):
     lan_interface_ip: str | None = None
     discovery_timeout_s: float = Field(3.0, gt=0, le=30)
     poll_interval_s: float = Field(30.0, ge=1)
+    # Keep polling devices without push even when no dashboard is open (needed for the change log).
+    poll_always: bool = True
     state_max_age_s: float = Field(5.0, ge=0)
     offline_after_failures: int = Field(3, ge=1)
 

@@ -1,6 +1,7 @@
 import { Loader2 } from "lucide-react";
 import { useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import type { Availability } from "../api/types";
+import { useLang, useT, type MessageKey } from "../lib/i18n";
 
 export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
@@ -143,19 +144,45 @@ export function Slider({
   );
 }
 
-const AVAILABILITY: Record<Availability, { text: string; dot: string }> = {
-  online: { text: "Online", dot: "bg-emerald-400" },
-  offline: { text: "Offline", dot: "bg-red-400" },
-  unknown: { text: "Άγνωστο", dot: "bg-gray-500" },
+const AVAILABILITY: Record<Availability, { key: MessageKey; dot: string }> = {
+  online: { key: "avail.online", dot: "bg-emerald-400" },
+  offline: { key: "avail.offline", dot: "bg-red-400" },
+  unknown: { key: "avail.unknown", dot: "bg-gray-500" },
 };
 
 export function StatusDot({ availability }: { availability: Availability }) {
+  const t = useT();
   const a = AVAILABILITY[availability];
   return (
     <span className="inline-flex items-center gap-1.5 text-xs text-muted">
       <span className={cx("size-2 rounded-full", a.dot)} aria-hidden />
-      {a.text}
+      {t(a.key)}
     </span>
+  );
+}
+
+/** EL / EN switch. */
+export function LanguageSwitch({ className }: { className?: string }) {
+  const lang = useLang((s) => s.lang);
+  const setLang = useLang((s) => s.setLang);
+  const t = useT();
+  return (
+    <div role="group" aria-label={t("lang.label")} className={cx("inline-flex rounded-lg border border-line p-0.5 text-xs", className)}>
+      {(["el", "en"] as const).map((l) => (
+        <button
+          key={l}
+          type="button"
+          aria-pressed={lang === l}
+          onClick={() => setLang(l)}
+          className={cx(
+            "min-h-7 min-w-9 rounded-md px-2 font-medium uppercase transition-colors",
+            lang === l ? "bg-panel-2 text-white" : "text-muted hover:text-white",
+          )}
+        >
+          {l}
+        </button>
+      ))}
+    </div>
   );
 }
 

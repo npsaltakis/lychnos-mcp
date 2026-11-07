@@ -1,4 +1,5 @@
 import { api } from "../api/client";
+import { t } from "./i18n";
 
 export function webPushSupported(): boolean {
   return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
@@ -25,10 +26,10 @@ export async function currentSubscription(): Promise<PushSubscription | null> {
 
 /** Ask for permission, subscribe this browser and register it with the backend. */
 export async function enableWebPush(): Promise<void> {
-  if (!webPushSupported()) throw new Error("Ο browser δεν υποστηρίζει ειδοποιήσεις push");
-  if (!webPushContextOk()) throw new Error("Χρειάζεται HTTPS (ή άνοιγμα από αυτό το PC στο 127.0.0.1)");
+  if (!webPushSupported()) throw new Error(t("ntf.pushNotSupported"));
+  if (!webPushContextOk()) throw new Error(t("ntf.pushNeedsHttps"));
   const permission = await Notification.requestPermission();
-  if (permission !== "granted") throw new Error("Δεν δόθηκε άδεια για ειδοποιήσεις στον browser");
+  if (permission !== "granted") throw new Error(t("ntf.pushDenied"));
   const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
   await navigator.serviceWorker.ready;
   const { public_key } = await api.webpushKey();

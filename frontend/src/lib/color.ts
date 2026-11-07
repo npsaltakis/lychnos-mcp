@@ -1,4 +1,5 @@
 import type { DeviceState, RGB } from "../api/types";
+import type { MessageKey } from "./i18n";
 
 export const rgbToHex = ({ r, g, b }: RGB) =>
   `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
@@ -26,13 +27,14 @@ export function stateColor(state: DeviceState): string | null {
   return null;
 }
 
-export const PRESETS: { name: string; rgb: RGB }[] = [
-  { name: "Κόκκινο", rgb: { r: 255, g: 0, b: 0 } },
-  { name: "Πορτοκαλί", rgb: { r: 255, g: 127, b: 0 } },
-  { name: "Κίτρινο", rgb: { r: 255, g: 210, b: 0 } },
-  { name: "Πράσινο", rgb: { r: 0, g: 255, b: 64 } },
-  { name: "Κυανό", rgb: { r: 0, g: 220, b: 255 } },
-  { name: "Μπλε", rgb: { r: 0, g: 60, b: 255 } },
-  { name: "Μωβ", rgb: { r: 140, g: 0, b: 255 } },
-  { name: "Ροζ", rgb: { r: 255, g: 0, b: 150 } },
+/** Quick colours; `key` is the translation key of the colour name. */
+export const PRESETS: { key: MessageKey; rgb: RGB }[] = [
+  { key: "color.red", rgb: { r: 255, g: 0, b: 0 } },
+  { key: "color.orange", rgb: { r: 255, g: 127, b: 0 } },
+  { key: "color.yellow", rgb: { r: 255, g: 210, b: 0 } },
+  { key: "color.green", rgb: { r: 0, g: 255, b: 64 } },
+  { key: "color.cyan", rgb: { r: 0, g: 220, b: 255 } },
+  { key: "color.blue", rgb: { r: 0, g: 60, b: 255 } },
+  { key: "color.purple", rgb: { r: 140, g: 0, b: 255 } },
+  { key: "color.pink", rgb: { r: 255, g: 0, b: 150 } },
 ];

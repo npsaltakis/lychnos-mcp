@@ -76,8 +76,12 @@ The name is also an acronym of what the project is:
   weekdays. Actions: activate a scene, switch/colour/dim a light, a room or all lights, or a gradual
   **wake-up light** that fades in over N minutes and stops if you switch the light off. Runs missed while the
   backend was off are skipped, never replayed.
-- **History**: every command with time, device, result and who sent it (dashboard, Claude, a scene or an
-  automation).
+- **Log**: every switch-on, switch-off, brightness and colour change with its time, who made it (dashboard,
+  Claude, a scene, an automation, or an *external* change from Google Home, the vendor app or a wall switch) and
+  whether the device confirmed it, plus when a light went offline and came back. Filter by device or type and
+  export to CSV.
+- **Greek / English**: the dashboard is fully bilingual; switch with EL/EN in the sidebar, on the sign-in page or
+  in Settings (remembered per browser).
 - **Notifications** (all off by default, each with its own switch and a *Test* button in Settings):
   [ntfy](https://ntfy.sh) (free phone app, no account), Telegram (your own bot), email (SMTP, e.g. Gmail with an
   App Password) and browser push notifications from the dashboard itself. Choose which events notify you: a light
@@ -443,7 +447,8 @@ All settings are environment variables with the `SHC_` prefix (or `backend/.env`
 | `SHC_HOST` / `SHC_PORT` | `127.0.0.1` / `3000` | Bind address |
 | `SHC_ENABLED_PROVIDERS` | `[]` | e.g. `["govee_lan","ewelink_lan","yeelight_lan"]` |
 | `SHC_LAN_INTERFACE_IP` | auto | PC LAN IPv4 for multicast discovery |
-| `SHC_POLL_INTERVAL_S` | `30` | State refresh for non-push devices (only while someone is watching) |
+| `SHC_POLL_INTERVAL_S` | `30` | State refresh for non-push devices |
+| `SHC_POLL_ALWAYS` | `true` | Keep refreshing even with no dashboard open, so external changes reach the log. `false` = only while someone is watching |
 | `SHC_COMMAND_TIMEOUT_S` | `5` | Per-command timeout, including confirmation |
 | `SHC_SESSION_TTL_HOURS` | `168` | Dashboard session lifetime |
 | `SHC_ALLOW_REMOTE` / `SHC_ALLOWED_HOSTS` | `false` / `[]` | Required to expose beyond localhost |
@@ -521,6 +526,7 @@ cd frontend;    npm run dev      # http://127.0.0.1:5173
 - [x] Xiaomi / Yeelight provider (awaiting hardware verification)
 - [x] Rooms, automations (time, sunrise/sunset, wake-up light) and command history
 - [x] Notifications: ntfy, Telegram, email, browser push (all optional, off by default)
+- [x] Change log (including external changes) with CSV export; Greek/English interface
 - [ ] Sensor- and presence-based automations (needs sensors)
 - [ ] More providers: Matter, …
 

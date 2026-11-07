@@ -246,12 +246,24 @@ class ActivityRepository:
             )
         await self._db.conn.commit()
 
-    async def recent(self, limit: int = 100, device_id: str | None = None) -> list[ActivityEntry]:
+    async def recent(
+        self, limit: int = 100, device_id: str | None = None, kind: str | None = None
+    ) -> list[ActivityEntry]:
+        """kind: 'commands' (sent by Lychnos), 'changes' (made elsewhere), 'availability'."""
         query = "SELECT * FROM activity"
+        where: list[str] = []
         params: tuple[object, ...] = ()
         if device_id:
-            query += " WHERE device_id = ?"
-            params = (device_id,)
+            where.append("device_id = ?")
+            params = (*params, device_id)
+        if kind == "changes":
+            where.append("outcome = 'observed'")
+        elif kind == "availability":
+            where.append("outcome IN ('offline', 'online')")
+        elif kind == "commands":
+            where.append("outcome NOT IN ('observed', 'offline', 'online')")
+        if where:
+            query += " WHERE " + " AND ".join(where)
         query += " ORDER BY id DESC LIMIT ?"
         async with self._db.conn.execute(query, (*params, limit)) as cursor:
             rows = await cursor.fetchall()

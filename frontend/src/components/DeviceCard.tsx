@@ -4,6 +4,7 @@ import { HexColorPicker } from "react-colorful";
 import type { Command, CommandResult, DeviceView } from "../api/types";
 import { PRESETS, hexToRgb, kelvinToRgb, rgbToHex, stateColor } from "../lib/color";
 import { sendCommand } from "../lib/commands";
+import { locale, t, useT } from "../lib/i18n";
 import { has, useDevices } from "../store/devices";
 import { Card, Slider, StatusDot, Toggle, cx } from "./ui";
 
@@ -12,35 +13,37 @@ const COLOR_DEBOUNCE_MS = 350;
 function pendingLabel(command: Command): string {
   switch (command.type) {
     case "set_power":
-      return command.on ? "Άναμμα…" : "Σβήσιμο…";
+      return command.on ? t("card.turningOn") : t("card.turningOff");
     case "set_brightness":
-      return `Φωτεινότητα ${command.brightness}%…`;
+      return t("card.brightnessPending", { value: command.brightness });
     case "set_color":
-      return "Αλλαγή χρώματος…";
+      return t("card.colorPending");
     case "set_color_temperature":
       return `${command.kelvin}K…`;
   }
 }
 
 function OutcomeBadge({ result }: { result: CommandResult | undefined }) {
+  const tr = useT();
   if (!result) return null;
   const map = {
-    confirmed: { icon: CheckCircle2, text: "Επιβεβαιώθηκε", cls: "text-emerald-400" },
-    unconfirmed: { icon: Clock, text: "Χωρίς επιβεβαίωση", cls: "text-amber-300" },
-    mismatch: { icon: AlertTriangle, text: "Διαφορετική κατάσταση", cls: "text-amber-300" },
-    failed: { icon: AlertTriangle, text: "Απέτυχε", cls: "text-red-400" },
+    confirmed: { icon: CheckCircle2, key: "outcome.confirmed", cls: "text-emerald-400" },
+    unconfirmed: { icon: Clock, key: "outcome.unconfirmed", cls: "text-amber-300" },
+    mismatch: { icon: AlertTriangle, key: "outcome.mismatch", cls: "text-amber-300" },
+    failed: { icon: AlertTriangle, key: "outcome.failed", cls: "text-red-400" },
   } as const;
   const o = map[result.outcome];
   const Icon = o.icon;
   return (
     <span className={cx("inline-flex items-center gap-1 text-xs", o.cls)} title={result.error?.message}>
       <Icon className="size-3.5" aria-hidden />
-      {o.text} · {result.duration_ms} ms
+      {tr(o.key)} · {result.duration_ms} ms
     </span>
   );
 }
 
 export function DeviceCard({ view }: { view: DeviceView }) {
+  const tr = useT();
   const { device, runtime } = view;
   const { state } = runtime;
   const lastResult = useDevices((s) => s.lastResult[device.id]);
@@ -72,6 +75,9 @@ export function DeviceCard({ view }: { view: DeviceView }) {
   const pickerHex = draftHex ?? (state.color ? rgbToHex(state.color) : "#ffffff");
   const showColor = has(view, "color_rgb");
   const showWhite = has(view, "color_temp") && ctRange;
+  const lastKnown = runtime.state_confirmed_at
+    ? ` (${new Date(runtime.state_confirmed_at).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })})`
+    : "";
 
   return (
     <Card className="relative overflow-hidden">
@@ -89,7 +95,7 @@ export function DeviceCard({ view }: { view: DeviceView }) {
             !preview && "bg-panel-2",
           )}
           style={preview ? { background: preview, boxShadow: `0 0 24px ${preview}55` } : undefined}
-          aria-label={preview ? `Τρέχον χρώμα ${preview}` : "Σβηστή"}
+          aria-label={preview ? tr("card.currentColor", { color: preview }) : tr("card.off")}
         >
           <Lightbulb className={cx("size-6", preview ? "text-black/70" : "text-muted")} aria-hidden />
         </div>
@@ -126,18 +132,14 @@ export function DeviceCard({ view }: { view: DeviceView }) {
       </div>
       {offline && (
         <p className="relative mt-2 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-300">
-          Η συσκευή δεν απαντά. Οι τιμές παρακάτω είναι η τελευταία γνωστή κατάσταση
-          {runtime.state_confirmed_at
-            ? ` (${new Date(runtime.state_confirmed_at).toLocaleTimeString("el-GR", { hour: "2-digit", minute: "2-digit" })})`
-            : ""}
-          .
+          {tr("card.offline", { time: lastKnown })}
         </p>
       )}
 
       <div className={cx("relative mt-4 space-y-5", (!isOn || offline) && "opacity-60")}>
         {has(view, "brightness") && (
           <Slider
-            label="Φωτεινότητα"
+            label={tr("card.brightness")}
             min={caps.brightness_min}
             max={100}
             value={state.brightness}
@@ -152,8 +154,8 @@ export function DeviceCard({ view }: { view: DeviceView }) {
               <div className="mb-3 grid grid-cols-2 gap-1 rounded-xl bg-panel-2 p-1 text-sm" role="tablist">
                 {(
                   [
-                    ["color", "Χρώμα", Palette],
-                    ["white", "Λευκό", Sun],
+                    ["color", tr("card.color"), Palette],
+                    ["white", tr("card.white"), Sun],
                   ] as const
                 ).map(([key, text, Icon]) => (
                   <button
@@ -178,12 +180,12 @@ export function DeviceCard({ view }: { view: DeviceView }) {
                 <div className="color-picker">
                   <HexColorPicker color={pickerHex} onChange={onPick} />
                 </div>
-                <div className="flex flex-wrap gap-2" aria-label="Γρήγορα χρώματα">
+                <div className="flex flex-wrap gap-2" aria-label={tr("card.presets")}>
                   {PRESETS.map((p) => (
                     <button
-                      key={p.name}
-                      title={p.name}
-                      aria-label={p.name}
+                      key={p.key}
+                      title={tr(p.key)}
+                      aria-label={tr(p.key)}
                       onClick={() => send({ type: "set_color", color: p.rgb })}
                       className="size-8 rounded-full border-2 border-white/10 transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-accent"
                       style={{ background: rgbToHex(p.rgb) }}
@@ -195,7 +197,7 @@ export function DeviceCard({ view }: { view: DeviceView }) {
 
             {showWhite && (tab === "white" || !showColor) && ctRange && (
               <Slider
-                label="Θερμοκρασία χρώματος"
+                label={tr("card.colorTemp")}
                 min={ctRange.min_k}
                 max={ctRange.max_k}
                 step={50}
@@ -210,8 +212,8 @@ export function DeviceCard({ view }: { view: DeviceView }) {
 
         {caps.supported.length === 0 && (
           <p className="text-sm text-amber-300">
-            Δεν υπάρχουν διαθέσιμοι έλεγχοι.
-            {device.metadata.has_devicekey === false && " Λείπει το κλειδί eWeLink (δες Ρυθμίσεις)."}
+            {tr("card.noControls")}
+            {device.metadata.has_devicekey === false && tr("card.missingKey")}
           </p>
         )}
       </div>

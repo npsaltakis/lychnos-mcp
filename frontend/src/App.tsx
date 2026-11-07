@@ -4,6 +4,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { checkAuth } from "./api/client";
 import { Layout } from "./components/Layout";
 import { useLiveUpdates } from "./hooks/useLiveUpdates";
+import { t } from "./lib/i18n";
 import { Automations } from "./pages/Automations";
 import { Dashboard } from "./pages/Dashboard";
 import { Devices } from "./pages/Devices";
@@ -22,6 +23,7 @@ function SignedInApp() {
           <Route index element={<Dashboard />} />
           <Route path="scenes" element={<Scenes />} />
           <Route path="automations" element={<Automations />} />
+          <Route path="log" element={<History />} />
           <Route path="history" element={<History />} />
           <Route path="devices" element={<Devices />} />
           <Route path="settings" element={<Settings />} />
@@ -41,7 +43,7 @@ export function App() {
   if (status === "checking") {
     return (
       <div className="flex min-h-screen items-center justify-center text-muted">
-        <Loader2 className="size-6 animate-spin" aria-label="Φόρτωση" />
+        <Loader2 className="size-6 animate-spin" aria-label={t("app.loading")} />
       </div>
     );
   }

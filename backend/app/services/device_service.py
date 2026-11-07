@@ -31,9 +31,11 @@ from app.domain.models import (
     CommandResult,
     DeviceRecord,
     DeviceRuntime,
+    Availability,
     DeviceState,
     DeviceView,
     DiscoveredDevice,
+    LightMode,
     ErrorInfo,
     PendingCommand,
     SetBrightness,
@@ -56,6 +58,40 @@ log = logging.getLogger(__name__)
 INITIAL_REFRESH_DELAYS_S = (0, 3, 10, 30)
 
 UNSET: object = object()  # "argument not given" marker (None is a meaningful value)
+
+
+# A state change within this many seconds of our own matching command is attributed to it.
+COMMAND_ATTRIBUTION_S = 20.0
+
+
+def explained_fields(command: Command) -> set[str]:
+    """State fields a command is expected to change (colour/brightness may also switch a light on)."""
+    match command:
+        case SetPower():
+            return {"power"}
+        case SetBrightness():
+            return {"brightness", "power"}
+        case SetColor():
+            return {"color", "power"}
+        case SetColorTemperature():
+            return {"color_temp", "power"}
+    return set()
+
+
+def describe_changes(old: DeviceState, new: DeviceState) -> list[tuple[str, str]]:
+    """Human-readable changes between two confirmed states; nothing for values seen the first time."""
+    changes: list[tuple[str, str]] = []
+    if old.power is not None and new.power is not None and old.power != new.power:
+        changes.append(("power", "ON" if new.power else "OFF"))
+    if old.brightness is not None and new.brightness is not None and abs(old.brightness - new.brightness) > 1:
+        changes.append(("brightness", f"brightness {new.brightness}%"))
+    if old.mode is not None and new.mode is LightMode.COLOR and new.color is not None:
+        if old.mode is not LightMode.COLOR or old.color is None or not old.color.close_to(new.color):
+            changes.append(("color", f"color {new.color.to_hex()}"))
+    if old.mode is not None and new.mode is LightMode.WHITE and new.color_temp_k is not None:
+        if old.mode is not LightMode.WHITE or old.color_temp_k is None or abs(old.color_temp_k - new.color_temp_k) > 100:
+            changes.append(("color_temp", f"white {new.color_temp_k}K"))
+    return changes
 
 
 def describe_command(command: Command) -> str:
@@ -93,6 +129,10 @@ class DeviceService:
         self._poll_task: asyncio.Task[None] | None = None
         self._last_client_activity = 0.0
         self._background: set[asyncio.Task[None]] = set()
+        # Commands sent recently per device, to tell our own changes from external ones
+        # (Google Home, the vendor app, a wall switch).
+        self._recent_commands: dict[str, list[tuple[Command, float]]] = {}
+        store.listeners.append(self._on_state_change)
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -378,6 +418,9 @@ class DeviceService:
         async with lock:
             command_id = uuid.uuid4().hex[:12]
             started = time.perf_counter()
+            now = time.monotonic()
+            recent = [c for c in self._recent_commands.get(device.id, []) if now - c[1] < COMMAND_ATTRIBUTION_S]
+            self._recent_commands[device.id] = [*recent, (command, now)]
             self._store.set_pending(device.id, PendingCommand(command_id=command_id, command=command))
             error: AppError | None = None
             observed: DeviceState | None = None
@@ -474,6 +517,45 @@ class DeviceService:
 
     # ------------------------------------------------------------------ internals
 
+    # ------------------------------------------------------------------ change log
+
+    def _on_state_change(
+        self,
+        device_id: str,
+        old: DeviceState,
+        new: DeviceState,
+        old_av: Availability,
+        new_av: Availability,
+    ) -> None:
+        """Record changes nobody asked Lychnos for, and availability changes, in the history."""
+        device = self._devices.get(device_id)
+        if device is None or not device.registered or self._activity is None:
+            return
+        entries: list[tuple[str, str, str]] = []  # (source, text, outcome)
+        if old_av != new_av and old_av is not Availability.UNKNOWN:
+            if new_av is Availability.OFFLINE:
+                entries.append(("system", "offline", "offline"))
+            elif new_av is Availability.ONLINE and old_av is Availability.OFFLINE:
+                entries.append(("system", "online", "online"))
+        now = time.monotonic()
+        recent = [c for c, ts in self._recent_commands.get(device_id, []) if now - ts < COMMAND_ATTRIBUTION_S]
+        for field, text in describe_changes(old, new):
+            if not any(field in explained_fields(c) for c in recent):
+                entries.append(("external", text, "observed"))
+        for source, text, outcome in entries:
+            self._spawn(self._log_activity(device, source, text, outcome))
+
+    async def _log_activity(self, device: DeviceRecord, source: str, text: str, outcome: str) -> None:
+        assert self._activity is not None
+        try:
+            await self._activity.add(
+                ts=utcnow(), source=source, device_id=device.id, device_name=device.name,
+                command=text, outcome=outcome,
+            )
+            self._bus.publish(EventType.ACTIVITY_ADDED)
+        except Exception:
+            log.exception("activity log write failed")
+
     def _spawn(self, coro: Coroutine[Any, Any, None]) -> None:
         task = asyncio.create_task(coro)
         self._background.add(task)
@@ -515,11 +597,15 @@ class DeviceService:
         return record
 
     async def _poll_loop(self) -> None:
-        """Poll devices without push support, only while someone is watching."""
+        """Poll devices without push support.
+
+        By default always (so changes made from other apps are logged and alerts work);
+        with SHC_POLL_ALWAYS=false only while a dashboard/client is watching.
+        """
         interval = self._settings.poll_interval_s
         while True:
             await asyncio.sleep(interval)
-            watching = self._bus.subscriber_count > 0 or (
+            watching = self._settings.poll_always or self._bus.subscriber_count > 0 or (
                 time.monotonic() - self._last_client_activity < interval * 2
             )
             if not watching:
