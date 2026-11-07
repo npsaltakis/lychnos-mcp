@@ -18,7 +18,8 @@ log = logging.getLogger(__name__)
 
 NTFY_PRIORITY = {"low": 2, "default": 3, "high": 4}
 TELEGRAM_API = "https://api.telegram.org"
-WEBPUSH_CONTACT = "https://github.com/npsaltakis/lychnos-mcp"
+# VAPID "sub" claim: py_vapid accepts only a mailto: address or a bare https://host (no path).
+WEBPUSH_CONTACT = "https://github.com"
 
 
 class SendError(Exception):
@@ -140,9 +141,12 @@ async def send_webpush(
             if status in (404, 410):
                 expired.append(sub.endpoint)
             else:
-                errors.append(str(status or exc))
+                errors.append(f"HTTP {status}" if status else str(exc))
+        except Exception as exc:  # signing, network, malformed subscription…
+            log.warning("web push failed", extra={"ctx": {"error": repr(exc)}})
+            errors.append(f"{exc.__class__.__name__}: {exc}")
 
     await asyncio.gather(*(asyncio.to_thread(push, s) for s in subscriptions))
     if errors and len(errors) + len(expired) == len(subscriptions):
-        raise SendError(f"Web Push: delivery failed ({errors[0]})")
+        raise SendError(f"Web Push: delivery failed ({errors[0][:200]})")
     return expired

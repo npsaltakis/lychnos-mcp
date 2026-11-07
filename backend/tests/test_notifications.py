@@ -160,6 +160,17 @@ def test_webpush_subscription_and_delivery(client: TestClient) -> None:
     assert view["webpush_devices"] == 0
 
 
+def test_webpush_claims_are_accepted_by_py_vapid() -> None:
+    """Regression: py_vapid rejects a 'sub' that is not mailto: or a bare https://host."""
+    from py_vapid import Vapid02
+
+    from app.services.notify_senders import WEBPUSH_CONTACT
+
+    vapid = Vapid02()
+    vapid.generate_keys()
+    assert "Authorization" in vapid.sign({"sub": WEBPUSH_CONTACT, "aud": "https://fcm.googleapis.com"})
+
+
 def _wait_for(predicate, timeout: float = 2.0) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
