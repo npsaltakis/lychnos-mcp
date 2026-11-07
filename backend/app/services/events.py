@@ -23,6 +23,9 @@ class EventType(StrEnum):
     DEVICE_REMOVED = "device_removed"
     COMMAND_RESULT = "command_result"
     SCENES_CHANGED = "scenes_changed"
+    ROOMS_CHANGED = "rooms_changed"
+    AUTOMATIONS_CHANGED = "automations_changed"
+    ACTIVITY_ADDED = "activity_added"
     NOTIFICATION = "notification"
     RESYNC_REQUIRED = "resync_required"  # subscriber fell behind; reload full state
 

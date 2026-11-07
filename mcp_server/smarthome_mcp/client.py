@@ -73,7 +73,8 @@ class BackendClient:
                 method,
                 f"/api{path}",
                 json=body,
-                headers={"Authorization": f"Bearer {token}"},
+                # X-SHC-Client: shown as the source of the change in the dashboard's history
+                headers={"Authorization": f"Bearer {token}", "X-SHC-Client": "claude"},
             )
         except httpx.ConnectError:
             raise BackendError(
@@ -120,3 +121,21 @@ class BackendClient:
 
     async def activate_scene(self, scene_id: str) -> dict[str, Any]:
         return await self.request("POST", f"/scenes/{scene_id}/activate")
+
+    async def rooms(self) -> list[dict[str, Any]]:
+        return await self.request("GET", "/rooms")
+
+    async def room_command(self, room_id: str, command: dict[str, Any]) -> dict[str, Any]:
+        return await self.request("POST", f"/rooms/{room_id}/commands", command)
+
+    async def automations(self) -> list[dict[str, Any]]:
+        return await self.request("GET", "/automations")
+
+    async def create_automation(self, body: dict[str, Any]) -> dict[str, Any]:
+        return await self.request("POST", "/automations", body)
+
+    async def set_automation_enabled(self, automation_id: str, enabled: bool) -> dict[str, Any]:
+        return await self.request("PATCH", f"/automations/{automation_id}", {"enabled": enabled})
+
+    async def delete_automation(self, automation_id: str) -> None:
+        await self.request("DELETE", f"/automations/{automation_id}")

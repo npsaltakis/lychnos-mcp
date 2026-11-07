@@ -8,6 +8,10 @@ interface DeviceStore {
   lastResult: Record<string, CommandResult>;
   connection: Connection;
   scenesVersion: number;
+  roomsVersion: number;
+  automationsVersion: number;
+  activityVersion: number;
+  bump: (key: "roomsVersion" | "automationsVersion" | "activityVersion") => void;
   setSnapshot: (views: DeviceView[]) => void;
   upsertRecord: (record: DeviceRecord) => void;
   setRuntime: (id: string, runtime: DeviceRuntime) => void;
@@ -32,6 +36,10 @@ export const useDevices = create<DeviceStore>((set) => ({
   lastResult: {},
   connection: "connecting",
   scenesVersion: 0,
+  roomsVersion: 0,
+  automationsVersion: 0,
+  activityVersion: 0,
+  bump: (key) => set((s) => ({ [key]: s[key] + 1 }) as Partial<DeviceStore>),
   setSnapshot: (views) => set({ devices: Object.fromEntries(views.map((v) => [v.device.id, v])) }),
   upsertRecord: (record) =>
     set((s) => ({

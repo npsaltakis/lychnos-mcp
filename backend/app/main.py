@@ -22,10 +22,19 @@ from app.core.logging import setup_logging
 from app.core.passwords import PasswordStore
 from app.core.security import load_or_create_token
 from app.persistence.database import Database
-from app.persistence.repositories import DeviceRepository, SceneRepository
+from app.persistence.repositories import (
+    ActivityRepository,
+    AutomationRepository,
+    DeviceRepository,
+    RoomRepository,
+    SceneRepository,
+    SettingsRepository,
+)
 from app.providers.base import DeviceProvider
 from app.providers.registry import ProviderRegistry
 from app.services.auth_service import AuthService
+from app.services.automation_service import AutomationService
+from app.services.room_service import RoomService
 from app.services.device_service import DeviceService
 from app.services.events import EventBus
 from app.services.scene_service import SceneService
@@ -59,8 +68,14 @@ def create_app(
         )
         bus = EventBus()
         store = StateStore(bus, settings.offline_after_failures)
-        device_service = DeviceService(settings, DeviceRepository(db), registry, store, bus)
+        activity_repo = ActivityRepository(db)
+        room_repo = RoomRepository(db)
+        device_service = DeviceService(settings, DeviceRepository(db), registry, store, bus, activity_repo)
         scene_service = SceneService(SceneRepository(db), device_service, bus)
+        room_service = RoomService(room_repo, device_service, bus)
+        automation_service = AutomationService(
+            AutomationRepository(db), SettingsRepository(db), room_repo, device_service, scene_service, bus
+        )
 
         auth_service = AuthService(
             db, PasswordStore(settings.password_path), timedelta(hours=settings.session_ttl_hours)
@@ -76,8 +91,12 @@ def create_app(
         app.state.device_service = device_service
         app.state.scene_service = scene_service
         app.state.auth_service = auth_service
+        app.state.room_service = room_service
+        app.state.automation_service = automation_service
+        app.state.activity_repo = activity_repo
 
         await device_service.start()
+        await automation_service.start()
         log.info(
             "backend started",
             extra={"ctx": {"host": settings.host, "port": settings.port, "version": __version__}},
@@ -85,6 +104,7 @@ def create_app(
         try:
             yield
         finally:
+            await automation_service.stop()
             await device_service.stop()
             await db.close()
             log.info("backend stopped")

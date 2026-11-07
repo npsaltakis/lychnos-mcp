@@ -49,6 +49,7 @@ export interface DeviceRecord {
   model: string | null;
   address: string | null;
   registered: boolean;
+  room_id: string | null;
   capabilities: Capabilities;
   metadata: Record<string, unknown>;
   created_at: string;
@@ -116,6 +117,59 @@ export interface SystemInfo {
   remote_access: boolean;
 }
 
+export interface Room {
+  id: string;
+  name: string;
+  icon: string;
+  sort_order: number;
+  created_at: string;
+}
+
+export type Trigger =
+  | { type: "time"; time: string; days: number[] }
+  | { type: "sun"; event: "sunrise" | "sunset"; offset_min: number; days: number[] };
+
+export interface Target {
+  kind: "all" | "room" | "device";
+  id: string | null;
+}
+
+export type AutomationAction =
+  | { type: "scene"; scene_id: string }
+  | { type: "command"; target: Target; command: Command }
+  | { type: "fade"; target: Target; to_brightness: number; duration_min: number; color_temp_k: number | null };
+
+export interface AutomationInput {
+  name: string;
+  enabled: boolean;
+  trigger: Trigger;
+  action: AutomationAction;
+}
+
+export interface Automation extends AutomationInput {
+  id: string;
+  last_run_at: string | null;
+  last_result: { outcome: string; message: string; at: string } | null;
+  next_run_at: string | null;
+}
+
+export interface Location {
+  latitude: number;
+  longitude: number;
+  label: string;
+}
+
+export interface ActivityEntry {
+  id: number;
+  ts: string;
+  source: string;
+  device_id: string | null;
+  device_name: string | null;
+  command: string;
+  outcome: string;
+  detail: string | null;
+}
+
 export type LiveEvent =
   | { type: "snapshot"; data: { devices: DeviceView[] } }
   | { type: "device_runtime"; data: { device_id: string; runtime: DeviceRuntime }; ts: string }
@@ -123,5 +177,8 @@ export type LiveEvent =
   | { type: "device_removed"; data: { device_id: string }; ts: string }
   | { type: "command_result"; data: CommandResult; ts: string }
   | { type: "scenes_changed"; data: Record<string, never>; ts: string }
+  | { type: "rooms_changed"; data: Record<string, never>; ts: string }
+  | { type: "automations_changed"; data: Record<string, never>; ts: string }
+  | { type: "activity_added"; data: Record<string, never>; ts: string }
   | { type: "notification"; data: { level: string; message: string }; ts: string }
   | { type: "resync_required"; data: Record<string, never>; ts: string };

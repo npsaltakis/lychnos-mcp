@@ -9,8 +9,11 @@ from datetime import datetime
 import aiosqlite
 
 from app.core.errors import ConflictError
-from app.domain.models import Capabilities, DeviceRecord, Scene, SceneAction
+from app.domain.automations import Automation
+from app.domain.models import ActivityEntry, Capabilities, DeviceRecord, Room, Scene, SceneAction
 from app.persistence.database import Database
+
+ACTIVITY_KEEP = 5000
 
 
 def _dt(value: str) -> datetime:
@@ -30,11 +33,11 @@ class DeviceRepository:
         await self._db.conn.execute(
             """
             INSERT INTO devices (id, provider, native_id, name, manufacturer, model, address,
-                                 registered, capabilities, metadata, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                 registered, room_id, capabilities, metadata, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 name=excluded.name, manufacturer=excluded.manufacturer, model=excluded.model,
-                address=excluded.address, registered=excluded.registered,
+                address=excluded.address, registered=excluded.registered, room_id=excluded.room_id,
                 capabilities=excluded.capabilities, metadata=excluded.metadata,
                 updated_at=excluded.updated_at
             """,
@@ -47,6 +50,7 @@ class DeviceRepository:
                 device.model,
                 device.address,
                 int(device.registered),
+                device.room_id,
                 device.capabilities.model_dump_json(),
                 json.dumps(device.metadata),
                 device.created_at.isoformat(),
@@ -70,6 +74,7 @@ class DeviceRepository:
             model=row["model"],
             address=row["address"],
             registered=bool(row["registered"]),
+            room_id=row["room_id"],
             capabilities=Capabilities.model_validate_json(row["capabilities"]),
             metadata=json.loads(row["metadata"]),
             created_at=_dt(row["created_at"]),
@@ -132,3 +137,145 @@ class SceneRepository:
             created_at=_dt(row["created_at"]),
             updated_at=_dt(row["updated_at"]),
         )
+
+
+class RoomRepository:
+    def __init__(self, db: Database) -> None:
+        self._db = db
+
+    async def list(self) -> list[Room]:
+        async with self._db.conn.execute("SELECT * FROM rooms ORDER BY sort_order, name") as cursor:
+            rows = await cursor.fetchall()
+        return [
+            Room(id=r["id"], name=r["name"], icon=r["icon"], sort_order=r["sort_order"], created_at=_dt(r["created_at"]))
+            for r in rows
+        ]
+
+    async def save(self, room: Room) -> None:
+        try:
+            await self._db.conn.execute(
+                """
+                INSERT INTO rooms (id, name, icon, sort_order, created_at) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET name=excluded.name, icon=excluded.icon, sort_order=excluded.sort_order
+                """,
+                (room.id, room.name, room.icon, room.sort_order, room.created_at.isoformat()),
+            )
+            await self._db.conn.commit()
+        except sqlite3.IntegrityError as exc:
+            await self._db.conn.rollback()
+            raise ConflictError(f"A room named {room.name!r} already exists", details={"name": room.name}) from exc
+
+    async def delete(self, room_id: str) -> bool:
+        await self._db.conn.execute("UPDATE devices SET room_id = NULL WHERE room_id = ?", (room_id,))
+        cursor = await self._db.conn.execute("DELETE FROM rooms WHERE id = ?", (room_id,))
+        await self._db.conn.commit()
+        return cursor.rowcount > 0
+
+
+class AutomationRepository:
+    def __init__(self, db: Database) -> None:
+        self._db = db
+
+    async def list(self) -> list[Automation]:
+        async with self._db.conn.execute("SELECT * FROM automations ORDER BY name") as cursor:
+            rows = await cursor.fetchall()
+        return [self._from_row(r) for r in rows]
+
+    async def save(self, automation: Automation) -> None:
+        await self._db.conn.execute(
+            """
+            INSERT INTO automations (id, name, enabled, trigger, action, last_run_at, last_result, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                name=excluded.name, enabled=excluded.enabled, trigger=excluded.trigger, action=excluded.action,
+                last_run_at=excluded.last_run_at, last_result=excluded.last_result, updated_at=excluded.updated_at
+            """,
+            (
+                automation.id,
+                automation.name,
+                int(automation.enabled),
+                automation.trigger.model_dump_json(),
+                automation.action.model_dump_json(),
+                automation.last_run_at.isoformat() if automation.last_run_at else None,
+                json.dumps(automation.last_result) if automation.last_result is not None else None,
+                automation.created_at.isoformat(),
+                automation.updated_at.isoformat(),
+            ),
+        )
+        await self._db.conn.commit()
+
+    async def delete(self, automation_id: str) -> bool:
+        cursor = await self._db.conn.execute("DELETE FROM automations WHERE id = ?", (automation_id,))
+        await self._db.conn.commit()
+        return cursor.rowcount > 0
+
+    @staticmethod
+    def _from_row(row: aiosqlite.Row) -> Automation:
+        return Automation.model_validate(
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "enabled": bool(row["enabled"]),
+                "trigger": json.loads(row["trigger"]),
+                "action": json.loads(row["action"]),
+                "last_run_at": row["last_run_at"],
+                "last_result": json.loads(row["last_result"]) if row["last_result"] else None,
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            }
+        )
+
+
+class ActivityRepository:
+    def __init__(self, db: Database) -> None:
+        self._db = db
+        self._writes = 0
+
+    async def add(
+        self, *, ts: datetime, source: str, device_id: str | None, device_name: str | None,
+        command: str, outcome: str, detail: str | None = None,
+    ) -> None:
+        await self._db.conn.execute(
+            "INSERT INTO activity (ts, source, device_id, device_name, command, outcome, detail) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (ts.isoformat(), source, device_id, device_name, command, outcome, detail),
+        )
+        self._writes += 1
+        if self._writes % 200 == 0:  # keep the log bounded
+            await self._db.conn.execute(
+                "DELETE FROM activity WHERE id <= (SELECT MAX(id) FROM activity) - ?", (ACTIVITY_KEEP,)
+            )
+        await self._db.conn.commit()
+
+    async def recent(self, limit: int = 100, device_id: str | None = None) -> list[ActivityEntry]:
+        query = "SELECT * FROM activity"
+        params: tuple[object, ...] = ()
+        if device_id:
+            query += " WHERE device_id = ?"
+            params = (device_id,)
+        query += " ORDER BY id DESC LIMIT ?"
+        async with self._db.conn.execute(query, (*params, limit)) as cursor:
+            rows = await cursor.fetchall()
+        return [
+            ActivityEntry(
+                id=r["id"], ts=_dt(r["ts"]), source=r["source"], device_id=r["device_id"],
+                device_name=r["device_name"], command=r["command"], outcome=r["outcome"], detail=r["detail"],
+            )
+            for r in rows
+        ]
+
+
+class SettingsRepository:
+    def __init__(self, db: Database) -> None:
+        self._db = db
+
+    async def get(self, key: str) -> object | None:
+        async with self._db.conn.execute("SELECT value FROM settings WHERE key = ?", (key,)) as cursor:
+            row = await cursor.fetchone()
+        return json.loads(row["value"]) if row else None
+
+    async def set(self, key: str, value: object) -> None:
+        await self._db.conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, json.dumps(value)),
+        )
+        await self._db.conn.commit()

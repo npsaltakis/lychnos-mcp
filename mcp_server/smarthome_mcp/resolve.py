@@ -64,6 +64,51 @@ def is_all(reference: str) -> bool:
     return normalize(reference) in {normalize(w) for w in ALL_WORDS}
 
 
+def find_room(rooms: list[dict[str, Any]], reference: str, *, exact_only: bool = False) -> dict[str, Any] | None:
+    """Room by id or name (accent/case-insensitive); exact match first, then a unique partial match."""
+    ref = normalize(reference)
+    for word in ("the ", "room ", "το ", "η ", "δωματιο "):
+        if ref.startswith(word):
+            ref = ref[len(word):]
+    exact = [r for r in rooms if r["id"] == reference or normalize(r["name"]) == ref]
+    if exact or exact_only:
+        return exact[0] if exact else None
+    partial = [r for r in rooms if ref and (ref in normalize(r["name"]) or normalize(r["name"]) in ref)]
+    return partial[0] if len(partial) == 1 else None
+
+
+WEEKDAYS: dict[str, list[int]] = {
+    "mon": [0], "monday": [0], "δευ": [0], "δευτερα": [0],
+    "tue": [1], "tuesday": [1], "τρι": [1], "τριτη": [1],
+    "wed": [2], "wednesday": [2], "τετ": [2], "τεταρτη": [2],
+    "thu": [3], "thursday": [3], "πεμ": [3], "πεμπτη": [3],
+    "fri": [4], "friday": [4], "παρ": [4], "παρασκευη": [4],
+    "sat": [5], "saturday": [5], "σαβ": [5], "σαββατο": [5],
+    "sun": [6], "sunday": [6], "κυρ": [6], "κυριακη": [6],
+    "weekdays": [0, 1, 2, 3, 4], "καθημερινες": [0, 1, 2, 3, 4],
+    "weekend": [5, 6], "σαββατοκυριακο": [5, 6],
+    "every day": list(range(7)), "daily": list(range(7)), "καθε μερα": list(range(7)),
+}
+
+
+def parse_days(days: list[str] | None) -> list[int]:
+    if not days:
+        return list(range(7))
+    result: set[int] = set()
+    for item in days:
+        key = normalize(str(item))
+        if key.isdigit() and 0 <= int(key) <= 6:
+            result.add(int(key))
+        elif key in WEEKDAYS:
+            result.update(WEEKDAYS[key])
+        else:
+            raise BackendError(
+                "invalid_days",
+                f"Unknown day {item!r}. Use mon…sun, weekdays, weekend or 0 (Monday) … 6 (Sunday).",
+            )
+    return sorted(result)
+
+
 def resolve_device(views: list[dict[str, Any]], reference: str) -> dict[str, Any]:
     """Find exactly one device by id, name, manufacturer or model (accent/case-insensitive)."""
     ref = normalize(reference)

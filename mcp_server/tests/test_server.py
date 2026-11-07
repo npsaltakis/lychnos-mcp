@@ -82,6 +82,8 @@ class FakeBackend:
         self.command_status = 200
         self.error_code = "device_offline"
         self.outcome = "confirmed"
+        self.rooms: list[dict] = [{"id": "r1", "name": "Σαλόνι", "icon": "sofa", "sort_order": 0, "created_at": ""}]
+        self.created_automation: dict | None = None
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content) if request.content else None
@@ -110,6 +112,16 @@ class FakeBackend:
             return httpx.Response(201, json={**body, "id": "s2", "created_at": "", "updated_at": ""})
         if path == "/api/scenes/s1/activate":
             return httpx.Response(200, json={"outcome": "all_confirmed", "results": [], "skipped": []})
+        if path == "/api/rooms":
+            return httpx.Response(200, json=self.rooms)
+        if path.startswith("/api/rooms/") and path.endswith("/commands"):
+            return httpx.Response(200, json={"outcome": "all_confirmed", "results": [], "skipped": []})
+        if path == "/api/automations" and request.method == "POST":
+            self.created_automation = body
+            return httpx.Response(201, json={**body, "id": "a1", "enabled": True, "next_run_at": "2026-11-09T15:20:00Z",
+                                             "last_run_at": None, "last_result": None})
+        if path == "/api/automations":
+            return httpx.Response(200, json=[])
         return httpx.Response(404, json={"error": {"code": "not_found", "message": path}})
 
 
@@ -179,6 +191,46 @@ async def test_scenes(backend: FakeBackend) -> None:
     sent = backend.calls[-1][2]
     assert sent["actions"][0]["color"] == {"r": 140, "g": 0, "b": 255}
     assert sent["actions"][1]["device_id"] == "ewelink_lan-bb"
+
+
+async def test_room_names_work_as_targets(backend: FakeBackend) -> None:
+    result = await server.turn_off("σαλονι")  # no accent, lower case
+    assert backend.calls[-1][:2] == ("POST", "/api/rooms/r1/commands")
+    assert result["target"] == "room Σαλόνι"
+    # device names still win when they are not a room name
+    await server.turn_on("Govee")
+    assert backend.calls[-1][1] == "/api/devices/govee_lan-aa/commands"
+
+
+async def test_create_automation_sunset_in_room(backend: FakeBackend) -> None:
+    result = await server.create_automation(
+        name="Evening", when="sunset", action="turn_on", target="living room Σαλόνι", offset_minutes=-15, days=["weekdays"]
+    )
+    sent = backend.created_automation
+    assert sent["trigger"] == {"type": "sun", "event": "sunset", "offset_min": -15, "days": [0, 1, 2, 3, 4]}
+    assert sent["action"]["target"] == {"kind": "room", "id": "r1"}
+    assert sent["action"]["command"] == {"type": "set_power", "on": True}
+    assert result["created"] is True and result["when"] == "sunset -15 min"
+
+
+async def test_create_wake_up_fade(backend: FakeBackend) -> None:
+    await server.create_automation(
+        name="Wake", when="07:00", action="wake_up_fade", target="Govee", brightness=80, kelvin=2700, fade_minutes=20
+    )
+    assert backend.created_automation["action"] == {
+        "type": "fade", "target": {"kind": "device", "id": "govee_lan-aa"},
+        "to_brightness": 80, "duration_min": 20, "color_temp_k": 2700,
+    }
+
+
+def test_parse_days() -> None:
+    from smarthome_mcp.resolve import parse_days
+
+    assert parse_days(None) == [0, 1, 2, 3, 4, 5, 6]
+    assert parse_days(["Σαββατοκύριακο"]) == [5, 6]
+    assert parse_days(["mon", "Παρασκευή"]) == [0, 4]
+    with pytest.raises(BackendError):
+        parse_days(["someday"])
 
 
 async def test_backend_not_running() -> None:

@@ -37,13 +37,15 @@ from app.domain.models import (
     ErrorInfo,
     PendingCommand,
     SetBrightness,
+    SetColor,
     SetColorTemperature,
+    SetPower,
     SkippedDevice,
     make_device_id,
     state_matches_command,
     utcnow,
 )
-from app.persistence.repositories import DeviceRepository
+from app.persistence.repositories import ActivityRepository, DeviceRepository
 from app.providers.registry import ProviderRegistry
 from app.services.events import EventBus, EventType
 from app.services.state_store import StateStore
@@ -52,6 +54,21 @@ log = logging.getLogger(__name__)
 
 # Delays (seconds) before each attempt of the first state read after startup.
 INITIAL_REFRESH_DELAYS_S = (0, 3, 10, 30)
+
+UNSET: object = object()  # "argument not given" marker (None is a meaningful value)
+
+
+def describe_command(command: Command) -> str:
+    match command:
+        case SetPower(on=on):
+            return "ON" if on else "OFF"
+        case SetBrightness(brightness=b):
+            return f"brightness {b}%"
+        case SetColor(color=c):
+            return f"color {c.to_hex()}"
+        case SetColorTemperature(kelvin=k):
+            return f"white {k}K"
+    return command.type
 
 
 class DeviceService:
@@ -62,9 +79,11 @@ class DeviceService:
         providers: ProviderRegistry,
         store: StateStore,
         bus: EventBus,
+        activity: ActivityRepository | None = None,
     ) -> None:
         self._settings = settings
         self._repo = repo
+        self._activity = activity
         self._providers = providers
         self._store = store
         self._bus = bus
@@ -164,14 +183,22 @@ class DeviceService:
         return found
 
     async def update_device(
-        self, device_id: str, *, name: str | None = None, registered: bool | None = None
+        self,
+        device_id: str,
+        *,
+        name: str | None = None,
+        registered: bool | None = None,
+        room_id: str | None | object = UNSET,
     ) -> DeviceView:
+        """Change name, registration or room. ``room_id=None`` removes the device from its room."""
         device = self.get_device(device_id)
         changes: dict[str, object] = {"updated_at": utcnow()}
         if name is not None:
             changes["name"] = name
         if registered is not None:
             changes["registered"] = registered
+        if room_id is not UNSET:
+            changes["room_id"] = room_id
         updated = device.model_copy(update=changes)
         await self._repo.upsert(updated)
         self._devices[device_id] = updated
@@ -179,6 +206,14 @@ class DeviceService:
         if registered and not device.registered and updated.capabilities.supports_state_query:
             self._spawn(self._safe_refresh(device_id))
         return self._view(updated)
+
+    def room_removed(self, room_id: str) -> None:
+        """Forget a deleted room in the cache (the database row was already cleared)."""
+        for device_id, device in list(self._devices.items()):
+            if device.room_id == room_id:
+                updated = device.model_copy(update={"room_id": None})
+                self._devices[device_id] = updated
+                self._bus.publish(EventType.DEVICE_UPDATED, {"device": updated.model_dump(mode="json")})
 
     async def delete_device(self, device_id: str) -> None:
         self.get_device(device_id)
@@ -290,13 +325,15 @@ class DeviceService:
                     details={"device_id": device.id, "min_k": rng.min_k, "max_k": rng.max_k},
                 )
 
-    async def execute(self, device_id: str, command: Command) -> CommandResult:
+    async def execute(self, device_id: str, command: Command, *, source: str = "api") -> CommandResult:
         """Validate and send one command. Never reports success the device did not confirm."""
         device = self.get_device(device_id)
         self.validate_command(device, command)
-        return await self._execute_validated(device, command)
+        return await self._execute_validated(device, command, source)
 
-    async def execute_sequence(self, device_id: str, commands: Iterable[Command]) -> list[CommandResult]:
+    async def execute_sequence(
+        self, device_id: str, commands: Iterable[Command], *, source: str = "api"
+    ) -> list[CommandResult]:
         """Run several commands on one device in order, stopping at the first failure."""
         device = self.get_device(device_id)
         commands = list(commands)
@@ -304,27 +341,39 @@ class DeviceService:
             self.validate_command(device, command)
         results: list[CommandResult] = []
         for command in commands:
-            result = await self._execute_validated(device, command)
+            result = await self._execute_validated(device, command, source)
             results.append(result)
             if result.outcome is CommandOutcome.FAILED:
                 break
         return results
 
-    async def execute_on_all(self, command: Command) -> BatchResult:
+    async def execute_on_all(self, command: Command, *, source: str = "api") -> BatchResult:
         """Send a command to every registered device that supports it."""
+        return await self.execute_on_group(command, room_id=None, source=source)
+
+    async def execute_on_group(
+        self, command: Command, *, room_id: str | None, source: str = "api"
+    ) -> BatchResult:
+        """Send a command to every registered device (of one room, if given) that supports it."""
         targets: list[DeviceRecord] = []
         skipped: list[SkippedDevice] = []
         for device in self._registered():
+            if room_id is not None and device.room_id != room_id:
+                continue
             try:
                 self.validate_command(device, command)
             except AppError as error:
                 skipped.append(SkippedDevice(device_id=device.id, reason=error.message))
                 continue
             targets.append(device)
-        results = await asyncio.gather(*(self._execute_validated(d, command) for d in targets))
+        results = await asyncio.gather(*(self._execute_validated(d, command, source) for d in targets))
         return BatchResult.build(list(results), skipped)
 
-    async def _execute_validated(self, device: DeviceRecord, command: Command) -> CommandResult:
+    def devices_in(self, room_id: str | None) -> list[DeviceRecord]:
+        """Registered devices of a room (or all registered devices when room_id is None)."""
+        return [d for d in self._registered() if room_id is None or d.room_id == room_id]
+
+    async def _execute_validated(self, device: DeviceRecord, command: Command, source: str = "api") -> CommandResult:
         lock = self._locks.setdefault(device.id, asyncio.Lock())
         async with lock:
             command_id = uuid.uuid4().hex[:12]
@@ -383,10 +432,25 @@ class DeviceService:
                     "outcome": outcome.value,
                     "duration_ms": result.duration_ms,
                     "error": error.code if error else None,
+                    "source": source,
                 }
             },
         )
         self._bus.publish(EventType.COMMAND_RESULT, result.model_dump(mode="json"))
+        if self._activity is not None:
+            try:
+                await self._activity.add(
+                    ts=utcnow(),
+                    source=source,
+                    device_id=device.id,
+                    device_name=device.name,
+                    command=describe_command(command),
+                    outcome=outcome.value,
+                    detail=error.message if error else None,
+                )
+                self._bus.publish(EventType.ACTIVITY_ADDED)
+            except Exception:
+                log.exception("activity log write failed")
         return result
 
     # ------------------------------------------------------------------ provider events (sink)

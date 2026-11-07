@@ -39,6 +39,15 @@ export function useLiveUpdates(): void {
         case "scenes_changed":
           s.bumpScenes();
           break;
+        case "rooms_changed":
+          s.bump("roomsVersion");
+          break;
+        case "automations_changed":
+          s.bump("automationsVersion");
+          break;
+        case "activity_added":
+          s.bump("activityVersion");
+          break;
         case "notification":
           notify(event.data.level === "warning" ? "warning" : "info", event.data.message);
           break;

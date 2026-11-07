@@ -4,8 +4,10 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { checkAuth } from "./api/client";
 import { Layout } from "./components/Layout";
 import { useLiveUpdates } from "./hooks/useLiveUpdates";
+import { Automations } from "./pages/Automations";
 import { Dashboard } from "./pages/Dashboard";
 import { Devices } from "./pages/Devices";
+import { History } from "./pages/History";
 import { Login } from "./pages/Login";
 import { Scenes } from "./pages/Scenes";
 import { Settings } from "./pages/Settings";
@@ -19,6 +21,8 @@ function SignedInApp() {
         <Route element={<Layout />}>
           <Route index element={<Dashboard />} />
           <Route path="scenes" element={<Scenes />} />
+          <Route path="automations" element={<Automations />} />
+          <Route path="history" element={<History />} />
           <Route path="devices" element={<Devices />} />
           <Route path="settings" element={<Settings />} />
           <Route path="*" element={<Dashboard />} />

@@ -232,6 +232,7 @@ class DeviceRecord(BaseModel):
     model: str | None = None
     address: str | None = None
     registered: bool = False
+    room_id: str | None = None
     capabilities: Capabilities
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=utcnow)
@@ -248,6 +249,28 @@ class DeviceRuntime(BaseModel):
     last_error: ErrorInfo | None = None
     consecutive_failures: int = 0
     last_seen_at: datetime | None = None
+
+
+class RoomInput(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    icon: str = Field("home", max_length=24, pattern=r"^[a-z0-9-]+$")
+
+
+class Room(RoomInput):
+    id: str
+    sort_order: int = 0
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class ActivityEntry(BaseModel):
+    id: int
+    ts: datetime
+    source: str  # "dashboard", "claude", "automation: <name>", "api"
+    device_id: str | None
+    device_name: str | None
+    command: str
+    outcome: str
+    detail: str | None = None
 
 
 class DeviceView(BaseModel):

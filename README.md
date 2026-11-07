@@ -70,12 +70,21 @@ The name is also an acronym of what the project is:
 - **Dashboard** (React + Tailwind, dark, mobile-friendly): per-light cards with on/off, brightness,
   colour picker, colour temperature and presets; *All lights* controls; scenes; device discovery and
   registration; live updates over WebSocket; toast notifications.
+- **Rooms**: group lights into rooms (Living room, Bedroom…). The home page is organised by room, with
+  on/off per room, and rooms can be used as targets everywhere (scenes aside), including from Claude.
+- **Automations**: run at a time of day or at sunrise/sunset (± minutes, using your location), on chosen
+  weekdays. Actions: activate a scene, switch/colour/dim a light, a room or all lights, or a gradual
+  **wake-up light** that fades in over N minutes and stops if you switch the light off. Runs missed while the
+  backend was off are skipped, never replayed.
+- **History**: every command with time, device, result and who sent it (dashboard, Claude, a scene or an
+  automation).
 - **Capability detection**: each card only shows the controls that device verifiably supports.
 - **Confirmed vs pending state**: the UI shows "pending…" while a command is in flight and the result
   (`confirmed` / `unconfirmed` / `mismatch` / `failed`) with the round-trip time.
-- **MCP server** (official Python SDK, stdio) with tools: `list_devices`, `get_device_state`, `turn_on`,
-  `turn_off`, `set_brightness`, `set_color`, `set_color_temperature`, `list_scenes`, `activate_scene`,
-  `create_scene`. Device names and colour names (English and Greek) are resolved for you.
+- **MCP server** (official Python SDK, stdio) with tools: `list_devices`, `list_rooms`, `get_device_state`,
+  `turn_on`, `turn_off`, `set_brightness`, `set_color`, `set_color_temperature`, `list_scenes`,
+  `activate_scene`, `create_scene`, `list_automations`, `create_automation`, `set_automation_enabled`,
+  `delete_automation`. Device, room and colour names (English and Greek) are resolved for you.
 - **Security**: password login, HttpOnly/SameSite=Strict sessions, brute-force lockout, CSRF and DNS
   rebinding protection, API bound to `127.0.0.1`, secrets kept outside the repository.
 - **Extensible**: a provider/adapter interface; adding a brand does not touch the core, the dashboard or MCP.
@@ -270,7 +279,9 @@ claude mcp add --scope user smart-home -- /path/to/smart-home-control/.venv/bin/
 ```
 
 Try: *"What lights are on?"*, *"Set the Govee light to blue at 35%"*, *"Turn off all lights"*,
-*"Create a movie-night scene and activate it"*.
+*"Turn off the living room"*, *"Create a movie-night scene and activate it"*,
+*"Every day at sunset turn on the living room"*, *"Wake me up with light at 07:00 on weekdays"*,
+*"Pause the evening automation"*.
 
 Debugging: Claude Desktop logs are in `%APPDATA%\Claude\logs\mcp-server-smart-home.log` (Windows). The backend
 logs JSON to `<data folder>/logs/backend.log`. You can run the server by hand with
@@ -493,6 +504,8 @@ cd frontend;    npm run dev      # http://127.0.0.1:5173
 - [ ] Sonoff hardware validation (after the eWeLink key setup)
 - [x] Phase 7: background start/stop/status scripts, autostart (Task Scheduler / systemd), remote access guide (LAN, Tailscale)
 - [x] Xiaomi / Yeelight provider (awaiting hardware verification)
+- [x] Rooms, automations (time, sunrise/sunset, wake-up light) and command history
+- [ ] Sensor- and presence-based automations (needs sensors)
 - [ ] More providers: Matter, …
 
 ## License

@@ -1,4 +1,4 @@
-import { Cpu, House, LogOut, Settings, Sparkles } from "lucide-react";
+import { CalendarClock, Cpu, House, LogOut, Settings, Sparkles } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../store/auth";
@@ -9,6 +9,7 @@ import { cx } from "./ui";
 const NAV = [
   { to: "/", label: "Αρχική", icon: House },
   { to: "/scenes", label: "Σκηνές", icon: Sparkles },
+  { to: "/automations", label: "Αυτοματισμοί", short: "Αυτόματα", icon: CalendarClock },
   { to: "/devices", label: "Συσκευές", icon: Cpu },
   { to: "/settings", label: "Ρυθμίσεις", icon: Settings },
 ];
@@ -106,8 +107,8 @@ export function Layout() {
       </div>
 
       {/* Bottom navigation (mobile) */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-line bg-panel/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
-        {NAV.map(({ to, label, icon: Icon }) => (
+      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-panel/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+        {NAV.map(({ to, label, short, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
@@ -117,7 +118,7 @@ export function Layout() {
             }
           >
             <Icon className="size-5" aria-hidden />
-            {label}
+            {short ?? label}
           </NavLink>
         ))}
       </nav>

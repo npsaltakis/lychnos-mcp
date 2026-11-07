@@ -44,6 +44,42 @@ MIGRATIONS: list[str] = [
         user_agent    TEXT NOT NULL DEFAULT ''
     );
     """,
+    """
+    CREATE TABLE rooms (
+        id          TEXT PRIMARY KEY,
+        name        TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        icon        TEXT NOT NULL DEFAULT 'home',
+        sort_order  INTEGER NOT NULL DEFAULT 0,
+        created_at  TEXT NOT NULL
+    );
+    ALTER TABLE devices ADD COLUMN room_id TEXT REFERENCES rooms(id) ON DELETE SET NULL;
+    CREATE TABLE automations (
+        id           TEXT PRIMARY KEY,
+        name         TEXT NOT NULL,
+        enabled      INTEGER NOT NULL DEFAULT 1,
+        trigger      TEXT NOT NULL,
+        action       TEXT NOT NULL,
+        last_run_at  TEXT,
+        last_result  TEXT,
+        created_at   TEXT NOT NULL,
+        updated_at   TEXT NOT NULL
+    );
+    CREATE TABLE activity (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts           TEXT NOT NULL,
+        source       TEXT NOT NULL,
+        device_id    TEXT,
+        device_name  TEXT,
+        command      TEXT NOT NULL,
+        outcome      TEXT NOT NULL,
+        detail       TEXT
+    );
+    CREATE INDEX activity_ts ON activity (ts);
+    CREATE TABLE settings (
+        key    TEXT PRIMARY KEY,
+        value  TEXT NOT NULL
+    );
+    """,
 ]
 
 

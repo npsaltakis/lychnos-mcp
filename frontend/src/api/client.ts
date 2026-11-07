@@ -1,5 +1,10 @@
 import { useAuth } from "../store/auth";
 import type {
+  ActivityEntry,
+  Automation,
+  AutomationInput,
+  Location,
+  Room,
   BatchResult,
   Command,
   CommandResult,
@@ -74,6 +79,23 @@ export const api = {
   updateScene: (id: string, scene: SceneInput) => request<Scene>("PUT", `/scenes/${id}`, scene),
   deleteScene: (id: string) => request<void>("DELETE", `/scenes/${id}`),
   activateScene: (id: string) => request<BatchResult>("POST", `/scenes/${id}/activate`),
+  rooms: () => request<Room[]>("GET", "/rooms"),
+  createRoom: (name: string, icon = "home") => request<Room>("POST", "/rooms", { name, icon }),
+  updateRoom: (id: string, name: string, icon = "home") => request<Room>("PUT", `/rooms/${id}`, { name, icon }),
+  deleteRoom: (id: string) => request<void>("DELETE", `/rooms/${id}`),
+  roomCommand: (id: string, command: Command) => request<BatchResult>("POST", `/rooms/${id}/commands`, command),
+  setDeviceRoom: (deviceId: string, roomId: string | null) =>
+    request<DeviceView>("PATCH", `/devices/${encodeURIComponent(deviceId)}`, { room_id: roomId }),
+  automations: () => request<Automation[]>("GET", "/automations"),
+  createAutomation: (body: AutomationInput) => request<Automation>("POST", "/automations", body),
+  updateAutomation: (id: string, body: AutomationInput) => request<Automation>("PUT", `/automations/${id}`, body),
+  setAutomationEnabled: (id: string, enabled: boolean) =>
+    request<Automation>("PATCH", `/automations/${id}`, { enabled }),
+  deleteAutomation: (id: string) => request<void>("DELETE", `/automations/${id}`),
+  runAutomation: (id: string) => request<Automation>("POST", `/automations/${id}/run`),
+  location: () => request<Location | null>("GET", "/settings/location"),
+  setLocation: (loc: Location) => request<Location>("PUT", "/settings/location", loc),
+  activity: (limit = 100) => request<ActivityEntry[]>("GET", `/activity?limit=${limit}`),
 };
 
 /** Ask the backend whether this browser has a valid session. */

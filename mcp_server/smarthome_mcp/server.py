@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import Any
+from typing import Any, Literal
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -19,7 +19,7 @@ from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
 from smarthome_mcp.client import BackendClient, BackendError
-from smarthome_mcp.resolve import is_all, normalize, parse_color, resolve_device
+from smarthome_mcp.resolve import find_room, is_all, normalize, parse_color, parse_days, resolve_device
 
 log = logging.getLogger("smarthome_mcp")
 
@@ -27,6 +27,8 @@ INSTRUCTIONS = """\
 Controls the user's real smart lights through their local Smart Home backend.
 - Use list_devices first if you are unsure which lights exist or what they support.
 - Pass device names as the user says them ("Govee", "Sonoff", "desk light"); use "all" for every light.
+- Room names ("living room", "Σαλόνι") work wherever a device is expected; list_rooms shows them.
+- Automations run on the home computer's local time; use list_automations / create_automation.
 - Every command result has an `outcome`. Only say a change happened if outcome is "confirmed".
   "unconfirmed" = sent but the device cannot confirm; "mismatch" = the device reports something else.
 - Only controls a device supports are allowed (see `capabilities`).
@@ -142,13 +144,36 @@ async def _names() -> tuple[list[dict[str, Any]], dict[str, str]]:
     return views, {v["device"]["id"]: v["device"]["name"] for v in views}
 
 
+async def _resolve_target(target: str) -> tuple[str, dict[str, Any] | None, list[dict[str, Any]], dict[str, str]]:
+    """Return (kind, item, views, names) where kind is 'all', 'room' or 'device'."""
+    views, names = await _names()
+    if is_all(target):
+        return "all", None, views, names
+    rooms = await client().rooms()
+    room = find_room(rooms, target, exact_only=True)
+    if room:
+        return "room", room, views, names
+    try:
+        return "device", resolve_device(views, target), views, names
+    except BackendError as err:
+        if err.code == "device_not_found" and (room := find_room(rooms, target)):
+            return "room", room, views, names
+        if err.code == "device_not_found" and rooms:
+            err.message += ". Rooms: " + ", ".join(r["name"] for r in rooms)
+        raise
+
+
 async def _send(device: str, command: dict[str, Any]) -> dict[str, Any]:
     try:
-        views, names = await _names()
-        if is_all(device):
+        kind, item, _views, names = await _resolve_target(device)
+        if kind == "all":
             return {"target": "all", **summarize_batch(await client().group_command(command), names)}
-        view = resolve_device(views, device)
-        result = await client().command(view["device"]["id"], command)
+        if kind == "room":
+            assert item is not None
+            batch = await client().room_command(item["id"], command)
+            return {"target": f"room {item['name']}", **summarize_batch(batch, names)}
+        assert item is not None
+        result = await client().command(item["device"]["id"], command)
         return summarize_result(result, names)
     except BackendError as err:
         raise _tool_error(err) from None
@@ -165,10 +190,38 @@ async def list_devices(include_unregistered: bool = False) -> dict[str, Any]:
     """
     try:
         views, _ = await _names()
+        room_names = {r["id"]: r["name"] for r in await client().rooms()}
     except BackendError as err:
         raise _tool_error(err) from None
-    devices = [summarize_device(v) for v in views if include_unregistered or v["device"]["registered"]]
+    devices = [
+        {**summarize_device(v), "room": room_names.get(v["device"].get("room_id") or "")}
+        for v in views
+        if include_unregistered or v["device"]["registered"]
+    ]
     return {"devices": devices, "count": len(devices)}
+
+
+@mcp.tool(annotations=READ)
+async def list_rooms() -> dict[str, Any]:
+    """List rooms with their lights and how many are on. Room names can be used wherever a device is expected."""
+    try:
+        rooms = await client().rooms()
+        views, _ = await _names()
+    except BackendError as err:
+        raise _tool_error(err) from None
+    result = []
+    for room in rooms:
+        members = [v for v in views if v["device"].get("room_id") == room["id"] and v["device"]["registered"]]
+        result.append(
+            {
+                "id": room["id"],
+                "name": room["name"],
+                "lights": [v["device"]["name"] for v in members],
+                "on": sum(1 for v in members if v["runtime"]["state"].get("power") is True),
+            }
+        )
+    unassigned = [v["device"]["name"] for v in views if v["device"]["registered"] and not v["device"].get("room_id")]
+    return {"rooms": result, "lights_without_room": unassigned}
 
 
 @mcp.tool(annotations=READ)
@@ -190,28 +243,28 @@ async def get_device_state(device: str, refresh: bool = True) -> dict[str, Any]:
 
 @mcp.tool(annotations=CONTROL)
 async def turn_on(device: str) -> dict[str, Any]:
-    """Turn a light on. Use device="all" for every light."""
+    """Turn a light on. `device` may also be a room name, or "all" for every light."""
     return await _send(device, {"type": "set_power", "on": True})
 
 
 @mcp.tool(annotations=CONTROL)
 async def turn_off(device: str) -> dict[str, Any]:
-    """Turn a light off. Use device="all" for every light."""
+    """Turn a light off. `device` may also be a room name, or "all" for every light."""
     return await _send(device, {"type": "set_power", "on": False})
 
 
 @mcp.tool(annotations=CONTROL)
 async def set_brightness(device: str, percent: int = Field(ge=1, le=100)) -> dict[str, Any]:
-    """Set brightness in percent (1-100). Use device="all" for every compatible light."""
+    """Set brightness in percent (1-100). `device` may be a light, a room name or "all"."""
     return await _send(device, {"type": "set_brightness", "brightness": percent})
 
 
 @mcp.tool(annotations=CONTROL)
 async def set_color(device: str, color: str) -> dict[str, Any]:
-    """Set an RGB colour. Use device="all" for every light that supports colour.
+    """Set an RGB colour on a light, a room or "all" (lights without colour are skipped).
 
     Args:
-        device: Device name/id or "all".
+        device: Device name/id, room name or "all".
         color: Hex ("#8000ff"), "rgb(128,0,255)" or a colour name in English or Greek
             (red, orange, yellow, green, cyan, blue, purple, pink, white, μπλε, μωβ, ...).
     """
@@ -306,6 +359,185 @@ async def create_scene(name: str, actions: list[SceneActionInput], description: 
     except BackendError as err:
         raise _tool_error(err) from None
     return {"created": True, "id": scene["id"], "name": scene["name"], "actions": len(scene["actions"])}
+
+
+# ---------------------------------------------------------------------------- automations
+
+DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+
+def summarize_automation(a: dict[str, Any], names: dict[str, str], rooms: dict[str, str], scenes: dict[str, str]) -> dict[str, Any]:
+    trigger, action = a["trigger"], a["action"]
+    if trigger["type"] == "time":
+        when = trigger["time"]
+    else:
+        offset = trigger.get("offset_min", 0)
+        when = trigger["event"] + (f" {offset:+d} min" if offset else "")
+    days = trigger.get("days", list(range(7)))
+    if action["type"] == "scene":
+        what = f"scene {scenes.get(action['scene_id'], action['scene_id'])}"
+    else:
+        target = action["target"]
+        target_name = (
+            "all lights" if target["kind"] == "all"
+            else f"room {rooms.get(target['id'], target['id'])}" if target["kind"] == "room"
+            else names.get(target["id"], target["id"])
+        )
+        if action["type"] == "fade":
+            what = f"wake-up fade to {action['to_brightness']}% over {action['duration_min']} min on {target_name}"
+        else:
+            what = f"{action['command']} on {target_name}"
+    return {
+        "id": a["id"],
+        "name": a["name"],
+        "enabled": a["enabled"],
+        "when": when,
+        "days": "every day" if len(days) == 7 else ", ".join(DAY_NAMES[d] for d in days),
+        "action": what,
+        "next_run_at": a.get("next_run_at"),
+        "last_run_at": a.get("last_run_at"),
+        "last_result": a.get("last_result"),
+    }
+
+
+async def _automation_context() -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+    _, names = await _names()
+    rooms = {r["id"]: r["name"] for r in await client().rooms()}
+    scenes = {s["id"]: s["name"] for s in await client().scenes()}
+    return names, rooms, scenes
+
+
+@mcp.tool(annotations=READ)
+async def list_automations() -> dict[str, Any]:
+    """List automations (schedules) with when they run next and their last result. Times are local time."""
+    try:
+        automations = await client().automations()
+        names, rooms, scenes = await _automation_context()
+    except BackendError as err:
+        raise _tool_error(err) from None
+    return {"automations": [summarize_automation(a, names, rooms, scenes) for a in automations]}
+
+
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=False))
+async def create_automation(
+    name: str,
+    when: str,
+    action: Literal[
+        "scene", "turn_on", "turn_off", "set_color", "set_brightness", "set_color_temperature", "wake_up_fade"
+    ],
+    target: str = "all",
+    scene: str | None = None,
+    color: str | None = None,
+    brightness: int | None = Field(None, ge=1, le=100),
+    kelvin: int | None = Field(None, ge=1000, le=12000),
+    offset_minutes: int = Field(0, ge=-240, le=240),
+    days: list[str] | None = None,
+    fade_minutes: int = Field(15, ge=1, le=120),
+) -> dict[str, Any]:
+    """Create a scheduled automation (local time of the home computer).
+
+    Args:
+        name: Short name, e.g. "Evening lights".
+        when: "HH:MM" (24h), "sunrise" or "sunset". Sunrise/sunset need the location set in the dashboard.
+        action: What to do. "scene" needs `scene`; "set_color" needs `color`; "set_brightness" needs
+            `brightness`; "set_color_temperature" needs `kelvin`; "wake_up_fade" switches the lights on at
+            1 % and raises them to `brightness` (default 100) over `fade_minutes`, optionally in `kelvin` white.
+        target: Light name, room name or "all" (ignored for "scene").
+        offset_minutes: For sunrise/sunset: minutes before (negative) or after (positive).
+        days: e.g. ["weekdays"], ["weekend"], ["mon", "fri"]; default every day.
+
+    Examples: "every day at sunset turn on the living room" → when="sunset", action="turn_on",
+    target="living room"; "wake me up at 07:00 on weekdays" → when="07:00", action="wake_up_fade",
+    target="bedroom", days=["weekdays"].
+    """
+    try:
+        if when.lower() in ("sunrise", "sunset", "ανατολη", "δυση", "ανατολή", "δύση"):
+            event = "sunrise" if when.lower() in ("sunrise", "ανατολη", "ανατολή") else "sunset"
+            trigger: dict[str, Any] = {"type": "sun", "event": event, "offset_min": offset_minutes}
+        else:
+            trigger = {"type": "time", "time": when.strip()}
+        trigger["days"] = parse_days(days)
+
+        if action == "scene":
+            if not scene:
+                raise BackendError("missing_scene", "action 'scene' needs the scene name")
+            scenes = await client().scenes()
+            ref = normalize(scene)
+            match = next((s for s in scenes if normalize(s["name"]) == ref or s["id"] == scene), None)
+            if match is None:
+                raise BackendError("scene_not_found", f"No scene {scene!r}. Available: " + ", ".join(s["name"] for s in scenes))
+            body_action: dict[str, Any] = {"type": "scene", "scene_id": match["id"]}
+        else:
+            kind, item, _views, _names_map = await _resolve_target(target)
+            target_spec: dict[str, Any] = {"kind": kind}
+            if kind == "room":
+                target_spec["id"] = item["id"]  # type: ignore[index]
+            elif kind == "device":
+                target_spec["id"] = item["device"]["id"]  # type: ignore[index]
+            if action == "wake_up_fade":
+                body_action = {
+                    "type": "fade", "target": target_spec, "to_brightness": brightness or 100,
+                    "duration_min": fade_minutes, "color_temp_k": kelvin,
+                }
+            else:
+                command: dict[str, Any]
+                if action in ("turn_on", "turn_off"):
+                    command = {"type": "set_power", "on": action == "turn_on"}
+                elif action == "set_color":
+                    if not color:
+                        raise BackendError("missing_color", "action 'set_color' needs `color`")
+                    command = {"type": "set_color", "color": parse_color(color)}
+                elif action == "set_brightness":
+                    if brightness is None:
+                        raise BackendError("missing_brightness", "action 'set_brightness' needs `brightness`")
+                    command = {"type": "set_brightness", "brightness": brightness}
+                else:
+                    if kelvin is None:
+                        raise BackendError("missing_kelvin", "action 'set_color_temperature' needs `kelvin`")
+                    command = {"type": "set_color_temperature", "kelvin": kelvin}
+                body_action = {"type": "command", "target": target_spec, "command": command}
+
+        created = await client().create_automation({"name": name, "trigger": trigger, "action": body_action})
+        names, rooms, scenes_map = await _automation_context()
+    except BackendError as err:
+        raise _tool_error(err) from None
+    return {"created": True, **summarize_automation(created, names, rooms, scenes_map)}
+
+
+async def _find_automation(automation: str) -> dict[str, Any]:
+    automations = await client().automations()
+    ref = normalize(automation)
+    match = next((a for a in automations if a["id"] == automation or normalize(a["name"]) == ref), None)
+    match = match or next((a for a in automations if ref in normalize(a["name"])), None)
+    if match is None:
+        raise BackendError(
+            "automation_not_found",
+            f"No automation {automation!r}. Available: " + (", ".join(a["name"] for a in automations) or "none"),
+        )
+    return match
+
+
+@mcp.tool(annotations=CONTROL)
+async def set_automation_enabled(automation: str, enabled: bool) -> dict[str, Any]:
+    """Pause (enabled=false) or resume (enabled=true) an automation, by name or id."""
+    try:
+        match = await _find_automation(automation)
+        updated = await client().set_automation_enabled(match["id"], enabled)
+        names, rooms, scenes = await _automation_context()
+    except BackendError as err:
+        raise _tool_error(err) from None
+    return summarize_automation(updated, names, rooms, scenes)
+
+
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True, open_world_hint=False))
+async def delete_automation(automation: str) -> dict[str, Any]:
+    """Delete an automation permanently, by name or id. Confirm with the user first."""
+    try:
+        match = await _find_automation(automation)
+        await client().delete_automation(match["id"])
+    except BackendError as err:
+        raise _tool_error(err) from None
+    return {"deleted": True, "name": match["name"]}
 
 
 def main() -> None:

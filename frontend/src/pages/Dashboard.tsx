@@ -1,26 +1,36 @@
-import { Lightbulb, Play } from "lucide-react";
-import { useEffect, useState } from "react";
+import { CalendarClock, ChevronRight, History, Lightbulb, Play } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import type { Scene } from "../api/types";
 import { AllLights, summarizeBatch } from "../components/AllLights";
-import { DeviceCard } from "../components/DeviceCard";
-import { Button, Empty, PageHeader } from "../components/ui";
+import { RoomSection } from "../components/RoomSection";
+import { Button, Card, Empty, PageHeader } from "../components/ui";
+import { useActivity, useAutomations, useRooms, useScenes } from "../hooks/useData";
 import { reportError } from "../lib/commands";
+import { sourceLabel } from "../lib/labels";
+import { formatAgo, formatUpcoming } from "../lib/time";
 import { sortedViews, useDevices } from "../store/devices";
 
 export function Dashboard() {
   const devices = useDevices((s) => s.devices);
-  const scenesVersion = useDevices((s) => s.scenesVersion);
-  const [scenes, setScenes] = useState<Scene[]>([]);
+  const rooms = useRooms();
+  const scenes = useScenes();
+  const automations = useAutomations();
+  const activity = useActivity(5);
   const [activating, setActivating] = useState<string | null>(null);
-
-  useEffect(() => {
-    api.scenes().then(setScenes).catch(() => undefined);
-  }, [scenesVersion]);
 
   const registered = sortedViews(devices).filter((v) => v.device.registered);
   const onCount = registered.filter((v) => v.runtime.state.power === true).length;
+  const roomIds = new Set(rooms.map((r) => r.id));
+  const sections = rooms
+    .map((room) => ({ room, views: registered.filter((v) => v.device.room_id === room.id) }))
+    .filter((s) => s.views.length > 0);
+  const unassigned = registered.filter((v) => !v.device.room_id || !roomIds.has(v.device.room_id));
+  const upcoming = automations
+    .filter((a) => a.enabled && a.next_run_at)
+    .sort((a, b) => (a.next_run_at! < b.next_run_at! ? -1 : 1))
+    .slice(0, 3);
 
   const activate = async (scene: Scene) => {
     setActivating(scene.id);
@@ -42,35 +52,82 @@ export function Dashboard() {
           ενεργοποίησε τις λάμπες που θέλεις να ελέγχεις.
         </Empty>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-8">
           <AllLights count={registered.length} onCount={onCount} />
 
-          {scenes.length > 0 && (
-            <section aria-labelledby="quick-scenes">
-              <h2 id="quick-scenes" className="mb-3 text-sm font-medium text-muted">
-                Σκηνές
-              </h2>
-              <div className="flex flex-wrap gap-2">
-                {scenes.map((scene) => (
-                  <Button
-                    key={scene.id}
-                    busy={activating === scene.id}
-                    disabled={activating !== null}
-                    onClick={() => activate(scene)}
-                  >
-                    <Play className="size-4" aria-hidden />
-                    {scene.name}
-                  </Button>
-                ))}
-              </div>
-            </section>
+          {(scenes.length > 0 || upcoming.length > 0) && (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {scenes.length > 0 && (
+                <Card>
+                  <h2 className="mb-3 text-sm font-medium text-muted">Σκηνές</h2>
+                  <div className="flex flex-wrap gap-2">
+                    {scenes.map((scene) => (
+                      <Button key={scene.id} busy={activating === scene.id} disabled={activating !== null} onClick={() => activate(scene)}>
+                        <Play className="size-4" aria-hidden />
+                        {scene.name}
+                      </Button>
+                    ))}
+                  </div>
+                </Card>
+              )}
+              {upcoming.length > 0 && (
+                <Card>
+                  <div className="mb-3 flex items-center justify-between">
+                    <h2 className="text-sm font-medium text-muted">Επόμενοι αυτοματισμοί</h2>
+                    <Link to="/automations" className="inline-flex items-center text-xs text-muted hover:text-white">
+                      Όλοι <ChevronRight className="size-3.5" aria-hidden />
+                    </Link>
+                  </div>
+                  <ul className="space-y-2">
+                    {upcoming.map((a) => (
+                      <li key={a.id} className="flex items-center justify-between gap-3 text-sm">
+                        <span className="inline-flex min-w-0 items-center gap-2">
+                          <CalendarClock className="size-4 shrink-0 text-accent" aria-hidden />
+                          <span className="truncate">{a.name}</span>
+                        </span>
+                        <span className="shrink-0 tabular-nums text-muted">{formatUpcoming(a.next_run_at)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              )}
+            </div>
           )}
 
-          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {registered.map((view) => (
-              <DeviceCard key={view.device.id} view={view} />
-            ))}
-          </section>
+          {rooms.length === 0 && (
+            <p className="text-sm text-muted">
+              Συμβουλή: φτιάξε δωμάτια (π.χ. Σαλόνι, Υπνοδωμάτιο) από τις{" "}
+              <Link to="/devices" className="text-accent underline">Συσκευές</Link> για να τα ελέγχεις μαζί.
+            </p>
+          )}
+
+          {sections.map(({ room, views }) => (
+            <RoomSection key={room.id} room={room} views={views} />
+          ))}
+          {unassigned.length > 0 && <RoomSection room={null} views={unassigned} />}
+
+          {activity.length > 0 && (
+            <Card>
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-sm font-medium text-muted">Πρόσφατη δραστηριότητα</h2>
+                <Link to="/history" className="inline-flex items-center gap-1 text-xs text-muted hover:text-white">
+                  <History className="size-3.5" aria-hidden /> Ιστορικό
+                </Link>
+              </div>
+              <ul className="divide-y divide-line text-sm">
+                {activity.map((e) => (
+                  <li key={e.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 py-2">
+                    <span className="min-w-0">
+                      <span className="font-medium">{e.device_name}</span> · {e.command}
+                    </span>
+                    <span className="text-xs text-muted">
+                      {sourceLabel(e.source)} · {formatAgo(e.ts)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
         </div>
       )}
     </>

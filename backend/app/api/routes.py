@@ -6,10 +6,25 @@ from fastapi import APIRouter, Depends, Query, Request, Response, status
 from pydantic import BaseModel, Field
 
 from app import __version__
-from app.api.deps import SESSION_COOKIE, Auth, Devices, Scenes, origin_allowed, require_auth
+from app.api.deps import (
+    SESSION_COOKIE,
+    Activity,
+    Auth,
+    Automations,
+    Devices,
+    Rooms,
+    Scenes,
+    Source,
+    origin_allowed,
+    require_auth,
+)
+from app.domain.automations import Automation, AutomationInput, Location
 from app.core.errors import CommandFailedError, UnauthorizedError
 from app.domain.models import (
+    ActivityEntry,
     BatchResult,
+    Room,
+    RoomInput,
     Command,
     CommandOutcome,
     CommandResult,
@@ -99,6 +114,7 @@ class DiscoveryRequest(BaseModel):
 class DeviceUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=64)
     registered: bool | None = None
+    room_id: str | None = Field(None, description="Room id; send null to remove the device from its room")
 
 
 @api.post("/discovery/scan", tags=["devices"])
@@ -117,8 +133,11 @@ async def get_device(device_id: str, devices: Devices) -> DeviceView:
 
 
 @api.patch("/devices/{device_id}", tags=["devices"])
-async def update_device(device_id: str, body: DeviceUpdate, devices: Devices) -> DeviceView:
-    return await devices.update_device(device_id, name=body.name, registered=body.registered)
+async def update_device(device_id: str, body: DeviceUpdate, devices: Devices, rooms: Rooms) -> DeviceView:
+    view = await devices.update_device(device_id, name=body.name, registered=body.registered)
+    if "room_id" in body.model_fields_set:
+        view = await rooms.assign(device_id, body.room_id)
+    return view
 
 
 @api.delete("/devices/{device_id}", tags=["devices"], status_code=status.HTTP_204_NO_CONTENT)
@@ -136,8 +155,8 @@ async def get_state(
 
 
 @api.post("/devices/{device_id}/commands", tags=["devices"])
-async def send_command(device_id: str, command: Command, devices: Devices) -> CommandResult:
-    result = await devices.execute(device_id, command)
+async def send_command(device_id: str, command: Command, devices: Devices, source: Source) -> CommandResult:
+    result = await devices.execute(device_id, command, source=source)
     if result.outcome is CommandOutcome.FAILED and result.error is not None:
         raise CommandFailedError(
             result.error.message,
@@ -148,8 +167,8 @@ async def send_command(device_id: str, command: Command, devices: Devices) -> Co
 
 
 @api.post("/groups/all/commands", tags=["devices"])
-async def send_group_command(command: Command, devices: Devices) -> BatchResult:
-    return await devices.execute_on_all(command)
+async def send_group_command(command: Command, devices: Devices, source: Source) -> BatchResult:
+    return await devices.execute_on_all(command, source=source)
 
 
 # ----------------------------------------------------------------------------- scenes
@@ -181,5 +200,94 @@ async def delete_scene(scene_id: str, scenes: Scenes) -> None:
 
 
 @api.post("/scenes/{scene_id}/activate", tags=["scenes"])
-async def activate_scene(scene_id: str, scenes: Scenes) -> BatchResult:
-    return await scenes.activate(scene_id)
+async def activate_scene(scene_id: str, scenes: Scenes, source: Source) -> BatchResult:
+    return await scenes.activate(scene_id, source=source)
+
+
+# ----------------------------------------------------------------------------- rooms
+
+
+@api.get("/rooms", tags=["rooms"])
+async def list_rooms(rooms: Rooms) -> list[Room]:
+    return await rooms.list()
+
+
+@api.post("/rooms", tags=["rooms"], status_code=status.HTTP_201_CREATED)
+async def create_room(body: RoomInput, rooms: Rooms) -> Room:
+    return await rooms.create(body)
+
+
+@api.put("/rooms/{room_id}", tags=["rooms"])
+async def update_room(room_id: str, body: RoomInput, rooms: Rooms) -> Room:
+    return await rooms.update(room_id, body)
+
+
+@api.delete("/rooms/{room_id}", tags=["rooms"], status_code=status.HTTP_204_NO_CONTENT)
+async def delete_room(room_id: str, rooms: Rooms) -> None:
+    await rooms.delete(room_id)
+
+
+@api.post("/rooms/{room_id}/commands", tags=["rooms"])
+async def send_room_command(room_id: str, command: Command, rooms: Rooms, source: Source) -> BatchResult:
+    return await rooms.command(room_id, command, source=source)
+
+
+# ----------------------------------------------------------------------------- automations
+
+
+class AutomationEnabled(BaseModel):
+    enabled: bool
+
+
+@api.get("/automations", tags=["automations"])
+async def list_automations(automations: Automations) -> list[Automation]:
+    return automations.list()
+
+
+@api.post("/automations", tags=["automations"], status_code=status.HTTP_201_CREATED)
+async def create_automation(body: AutomationInput, automations: Automations) -> Automation:
+    return await automations.create(body)
+
+
+@api.put("/automations/{automation_id}", tags=["automations"])
+async def update_automation(automation_id: str, body: AutomationInput, automations: Automations) -> Automation:
+    return await automations.update(automation_id, body)
+
+
+@api.patch("/automations/{automation_id}", tags=["automations"])
+async def set_automation_enabled(
+    automation_id: str, body: AutomationEnabled, automations: Automations
+) -> Automation:
+    return await automations.set_enabled(automation_id, body.enabled)
+
+
+@api.delete("/automations/{automation_id}", tags=["automations"], status_code=status.HTTP_204_NO_CONTENT)
+async def delete_automation(automation_id: str, automations: Automations) -> None:
+    await automations.delete(automation_id)
+
+
+@api.post("/automations/{automation_id}/run", tags=["automations"])
+async def run_automation(automation_id: str, automations: Automations) -> Automation:
+    return await automations.run_now(automation_id)
+
+
+@api.get("/settings/location", tags=["automations"])
+async def get_location(automations: Automations) -> Location | None:
+    return automations.get_location()
+
+
+@api.put("/settings/location", tags=["automations"])
+async def set_location(body: Location, automations: Automations) -> Location:
+    return await automations.set_location(body)
+
+
+# ----------------------------------------------------------------------------- history
+
+
+@api.get("/activity", tags=["history"])
+async def list_activity(
+    activity: Activity,
+    limit: int = Query(100, ge=1, le=500),
+    device_id: str | None = Query(None),
+) -> list[ActivityEntry]:
+    return await activity.recent(limit, device_id)

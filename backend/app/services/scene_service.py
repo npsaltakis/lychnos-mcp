@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 
-from app.core.errors import AppError, InvalidCommandError, NotFoundError
+from app.core.errors import AppError, ConflictError, InvalidCommandError, NotFoundError
 from app.domain.models import (
     BatchResult,
     CommandResult,
@@ -34,8 +34,15 @@ class SceneService:
             raise NotFoundError(f"Unknown scene {scene_id!r}", details={"scene_id": scene_id})
         return scene
 
+    async def _check_unique(self, name: str, own_id: str | None) -> None:
+        # SQLite's NOCASE only folds ASCII; compare Unicode-aware here (Ταινία == ταινία).
+        wanted = name.strip().casefold()
+        if any(s.name.casefold() == wanted and s.id != own_id for s in await self._repo.list()):
+            raise ConflictError(f"A scene named {name!r} already exists", details={"name": name})
+
     async def create(self, data: SceneInput) -> Scene:
         self._validate(data)
+        await self._check_unique(data.name, None)
         scene = Scene(id=uuid.uuid4().hex[:12], **data.model_dump())
         await self._repo.save(scene)
         self._bus.publish(EventType.SCENES_CHANGED)
@@ -44,6 +51,7 @@ class SceneService:
     async def update(self, scene_id: str, data: SceneInput) -> Scene:
         existing = await self.get(scene_id)
         self._validate(data)
+        await self._check_unique(data.name, scene_id)
         scene = Scene(
             id=existing.id, created_at=existing.created_at, updated_at=utcnow(), **data.model_dump()
         )
@@ -56,9 +64,10 @@ class SceneService:
             raise NotFoundError(f"Unknown scene {scene_id!r}", details={"scene_id": scene_id})
         self._bus.publish(EventType.SCENES_CHANGED)
 
-    async def activate(self, scene_id: str) -> BatchResult:
+    async def activate(self, scene_id: str, *, source: str = "api") -> BatchResult:
         """Apply a scene. Devices run in parallel; commands per device run in order."""
         scene = await self.get(scene_id)
+        source = f"{source} · scene {scene.name}"
         runnable: list[tuple[str, list]] = []
         skipped: list[SkippedDevice] = []
         for action in scene.actions:
@@ -73,7 +82,7 @@ class SceneService:
             runnable.append((action.device_id, commands))
 
         per_device = await asyncio.gather(
-            *(self._devices.execute_sequence(device_id, cmds) for device_id, cmds in runnable)
+            *(self._devices.execute_sequence(device_id, cmds, source=source) for device_id, cmds in runnable)
         )
         results: list[CommandResult] = [r for device_results in per_device for r in device_results]
         return BatchResult.build(results, skipped)
