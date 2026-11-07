@@ -55,15 +55,23 @@ The name is also an acronym of what the project is:
 
 | Dashboard | Mobile |
 |---|---|
-| ![Dashboard with live light card, all-lights controls and scenes](docs/screenshots/dashboard.png) | <img src="docs/screenshots/dashboard-mobile.png" alt="Dashboard on a phone" width="260"> |
+| ![Dashboard with rooms, all-lights controls, scenes and upcoming automations](docs/screenshots/dashboard.png) | <img src="docs/screenshots/dashboard-mobile.png" alt="Dashboard on a phone" width="260"> |
 
-| Scenes | Devices |
+| Log | Log on a phone |
 |---|---|
-| ![Saved lighting scenes](docs/screenshots/scenes.png) | ![Device discovery and registration](docs/screenshots/devices.png) |
+| ![Change log with filters and CSV export](docs/screenshots/log.png) | <img src="docs/screenshots/log-mobile.png" alt="Change log on a phone" width="260"> |
 
-| Login | Settings |
+| Automations | Scenes |
 |---|---|
-| ![Password login](docs/screenshots/login.png) | ![System status and security settings](docs/screenshots/settings.png) |
+| ![Automations: wake-up light, sunset, scheduled scene](docs/screenshots/automations.png) | ![Saved lighting scenes](docs/screenshots/scenes.png) |
+
+| Devices and rooms | Settings |
+|---|---|
+| ![Device discovery, registration and rooms](docs/screenshots/devices.png) | ![System status, language, notifications and security](docs/screenshots/settings.png) |
+
+| Login | |
+|---|---|
+| ![Password login with Greek/English switch](docs/screenshots/login.png) | |
 
 ## Features
 
