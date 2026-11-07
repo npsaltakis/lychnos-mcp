@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/OWNER/REPO/actions/workflows/ci.yml"><img src="https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/npsaltakis/lychnos-mcp/actions/workflows/ci.yml"><img src="https://github.com/npsaltakis/lychnos-mcp/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey" alt="Windows | Linux">
   <img src="https://img.shields.io/badge/MCP-Claude%20Desktop%20%7C%20Claude%20Code-orange" alt="MCP">
@@ -164,8 +164,8 @@ Requirements: **Python 3.11+** and **Node.js 20+**.
 ### Windows (PowerShell)
 
 ```powershell
-git clone <your-repo-url> smart-home-control
-cd smart-home-control
+git clone https://github.com/npsaltakis/lychnos-mcp.git
+cd lychnos-mcp
 
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install -e "backend[dev]" -e "mcp_server[dev]"
@@ -181,8 +181,8 @@ powershell -ExecutionPolicy Bypass -File scripts\run-backend.ps1
 
 ```bash
 sudo apt install python3-venv python3-pip nodejs npm    # or Node.js 20+ from nodesource
-git clone <your-repo-url> smart-home-control
-cd smart-home-control
+git clone https://github.com/npsaltakis/lychnos-mcp.git
+cd lychnos-mcp
 
 python3 -m venv .venv
 .venv/bin/python -m pip install -e "backend[dev]" -e "mcp_server[dev]"
