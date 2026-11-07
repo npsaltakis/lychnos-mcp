@@ -31,8 +31,8 @@ export function Toasts() {
               <p className="font-medium">{t.title}</p>
               {t.message && <p className="mt-0.5 text-muted">{t.message}</p>}
             </div>
-            <button onClick={() => dismiss(t.id)} aria-label={tr("common.close")} className="text-muted hover:text-white">
-              <X className="size-4" />
+            <button onClick={() => dismiss(t.id)} aria-label={tr("common.close")} className="-m-1.5 inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-line hover:text-white">
+              <X className="size-4" aria-hidden />
             </button>
           </div>
         );

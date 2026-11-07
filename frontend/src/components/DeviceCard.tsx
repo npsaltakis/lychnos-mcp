@@ -6,7 +6,7 @@ import { PRESETS, hexToRgb, kelvinToRgb, rgbToHex, stateColor } from "../lib/col
 import { sendCommand } from "../lib/commands";
 import { locale, t, useT } from "../lib/i18n";
 import { has, useDevices } from "../store/devices";
-import { Card, Slider, StatusDot, Toggle, cx } from "./ui";
+import { Card, Slider, StatusDot, Toggle, cx, swatchClass } from "./ui";
 
 const COLOR_DEBOUNCE_MS = 350;
 
@@ -111,7 +111,7 @@ export function DeviceCard({ view }: { view: DeviceView }) {
         </div>
         {has(view, "power") && (
           <Toggle
-            label={`${device.name} on/off`}
+            label={tr("card.powerAria", { name: device.name })}
             checked={state.power}
             pending={runtime.pending?.command.type === "set_power"}
             onChange={(on) => send({ type: "set_power", on })}
@@ -180,14 +180,14 @@ export function DeviceCard({ view }: { view: DeviceView }) {
                 <div className="color-picker">
                   <HexColorPicker color={pickerHex} onChange={onPick} />
                 </div>
-                <div className="flex flex-wrap gap-2" aria-label={tr("card.presets")}>
+                <div role="group" className="flex flex-wrap gap-2" aria-label={tr("card.presets")}>
                   {PRESETS.map((p) => (
                     <button
                       key={p.key}
                       title={tr(p.key)}
                       aria-label={tr(p.key)}
                       onClick={() => send({ type: "set_color", color: p.rgb })}
-                      className="size-8 rounded-full border-2 border-white/10 transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-accent"
+                      className={swatchClass}
                       style={{ background: rgbToHex(p.rgb) }}
                     />
                   ))}

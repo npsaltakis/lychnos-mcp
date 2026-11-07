@@ -168,7 +168,11 @@ function DeviceRow({ view, rooms }: { view: DeviceView; rooms: Room[] }) {
           ) : (
             <div className="flex items-center gap-2">
               <h3 className="truncate font-semibold">{device.name}</h3>
-              <button onClick={() => setEditing(true)} className="text-muted hover:text-white" aria-label={tr("common.rename")}>
+              <button
+                onClick={() => setEditing(true)}
+                className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-panel-2 hover:text-white"
+                aria-label={`${tr("common.rename")} ${device.name}`}
+              >
                 <Pencil className="size-4" />
               </button>
             </div>

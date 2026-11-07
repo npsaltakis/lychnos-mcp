@@ -49,7 +49,13 @@ export function History() {
   }, [kind, deviceId, version]);
 
   const exportCsv = () => {
-    const header = [t("log.when"), t("log.device"), t("log.change"), t("log.source"), t("log.result")];
+    const header = [
+      t("log.when"),
+      t("log.device"),
+      t("log.change"),
+      t("log.source"),
+      t("log.result"),
+    ];
     const lines = entries.map((e) =>
       [
         new Date(e.ts).toISOString(),
@@ -62,7 +68,10 @@ export function History() {
         .join(","),
     );
     // BOM so Excel opens Greek text correctly
-    const blob = new Blob(["﻿" + [header.map(csvCell).join(","), ...lines].join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob(
+      ["﻿" + [header.map(csvCell).join(","), ...lines].join("\r\n")],
+      { type: "text/csv;charset=utf-8" },
+    );
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -71,7 +80,8 @@ export function History() {
     URL.revokeObjectURL(url);
   };
 
-  const select = "min-h-10 rounded-xl border border-line bg-panel-2 px-3 text-sm focus:border-accent focus:outline-none";
+  const select =
+    "min-h-10 rounded-xl border border-line bg-panel-2 px-3 text-sm focus:border-accent focus:outline-none";
 
   return (
     <>
@@ -86,20 +96,35 @@ export function History() {
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div role="group" aria-label={t("log.change")} className="inline-flex flex-wrap gap-1 rounded-xl bg-panel-2 p-1 text-sm">
+        <div
+          role="group"
+          aria-label={t("log.change")}
+          className="-mx-4 flex max-w-[calc(100%+2rem)] gap-1 overflow-x-auto px-4 text-sm [scrollbar-width:none] sm:mx-0 sm:max-w-full sm:rounded-xl sm:bg-panel-2 sm:p-1 sm:px-1"
+        >
           {KINDS.map((k) => (
             <button
               key={k}
               type="button"
               aria-pressed={kind === k}
               onClick={() => setKind(k)}
-              className={cx("min-h-9 rounded-lg px-3", kind === k ? "bg-line text-white" : "text-muted hover:text-white")}
+              className={cx(
+                "min-h-10 shrink-0 whitespace-nowrap rounded-lg px-3 transition-colors",
+                kind === k
+                  ? "bg-line font-medium text-white"
+                  : "bg-panel-2 text-muted hover:text-white sm:bg-transparent",
+              )}
             >
               {t(`log.kind.${k}` as MessageKey)}
             </button>
           ))}
         </div>
-        <select id="log-device" className={select} value={deviceId} onChange={(e) => setDeviceId(e.target.value)} aria-label={t("log.device")}>
+        <select
+          id="log-device"
+          className={select}
+          value={deviceId}
+          onChange={(e) => setDeviceId(e.target.value)}
+          aria-label={t("log.device")}
+        >
           <option value="">{t("log.allDevices")}</option>
           {devices.map((v) => (
             <option key={v.device.id} value={v.device.id}>
@@ -107,45 +132,95 @@ export function History() {
             </option>
           ))}
         </select>
-        <span className="text-xs text-muted">{t("log.shown", { n: entries.length })}</span>
+        <span className="text-xs text-muted">
+          {t("log.shown", { n: entries.length })}
+        </span>
       </div>
 
       {entries.length === 0 ? (
-        <Empty icon={<ScrollText className="size-8" />} title={t("log.emptyTitle")}>
+        <Empty
+          icon={<ScrollText className="size-8" />}
+          title={t("log.emptyTitle")}
+        >
           {t("log.emptyText")}
         </Empty>
       ) : (
-        <Card className="p-0 sm:p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
-                  <th className="px-4 py-3 font-medium">{t("log.when")}</th>
-                  <th className="px-4 py-3 font-medium">{t("log.device")}</th>
-                  <th className="px-4 py-3 font-medium">{t("log.change")}</th>
-                  <th className="px-4 py-3 font-medium">{t("log.source")}</th>
-                  <th className="px-4 py-3 font-medium">{t("log.result")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {entries.map((e) => {
-                  const o = OUTCOME[e.outcome];
-                  return (
-                    <tr key={e.id} className="border-b border-line last:border-0">
-                      <td className="whitespace-nowrap px-4 py-2.5 tabular-nums text-muted">{formatDateTime(e.ts)}</td>
-                      <td className="px-4 py-2.5">{e.device_name}</td>
-                      <td className="whitespace-nowrap px-4 py-2.5">{changeLabel(e.command)}</td>
-                      <td className="px-4 py-2.5 text-muted">{sourceLabel(e.source)}</td>
-                      <td className={cx("whitespace-nowrap px-4 py-2.5", o?.cls ?? "text-muted")} title={e.detail ?? undefined}>
-                        {o ? t(o.key) : e.outcome}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+        <>
+          {/* Phones: one card per entry instead of a sideways-scrolling table */}
+          <ul className="space-y-2 sm:hidden">
+            {entries.map((e) => {
+              const o = OUTCOME[e.outcome];
+              return (
+                <li
+                  key={e.id}
+                  className="rounded-xl border border-line bg-panel p-3 text-sm"
+                >
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="font-medium">
+                      {changeLabel(e.command)}
+                    </span>
+                    <span
+                      className={cx("shrink-0 text-xs", o?.cls ?? "text-muted")}
+                    >
+                      {o ? t(o.key) : e.outcome}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 truncate text-muted">{e.device_name}</p>
+                  <p className="mt-1 text-xs text-muted">
+                    <span className="tabular-nums">{formatDateTime(e.ts)}</span>{" "}
+                    · {sourceLabel(e.source)}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+          <Card className="hidden p-0 sm:block sm:p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
+                    <th className="px-4 py-3 font-medium">{t("log.when")}</th>
+                    <th className="px-4 py-3 font-medium">{t("log.device")}</th>
+                    <th className="px-4 py-3 font-medium">{t("log.change")}</th>
+                    <th className="px-4 py-3 font-medium">{t("log.source")}</th>
+                    <th className="px-4 py-3 font-medium">{t("log.result")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {entries.map((e) => {
+                    const o = OUTCOME[e.outcome];
+                    return (
+                      <tr
+                        key={e.id}
+                        className="border-b border-line last:border-0"
+                      >
+                        <td className="whitespace-nowrap px-4 py-2.5 tabular-nums text-muted">
+                          {formatDateTime(e.ts)}
+                        </td>
+                        <td className="px-4 py-2.5">{e.device_name}</td>
+                        <td className="whitespace-nowrap px-4 py-2.5">
+                          {changeLabel(e.command)}
+                        </td>
+                        <td className="px-4 py-2.5 text-muted">
+                          {sourceLabel(e.source)}
+                        </td>
+                        <td
+                          className={cx(
+                            "whitespace-nowrap px-4 py-2.5",
+                            o?.cls ?? "text-muted",
+                          )}
+                          title={e.detail ?? undefined}
+                        >
+                          {o ? t(o.key) : e.outcome}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </>
       )}
     </>
   );

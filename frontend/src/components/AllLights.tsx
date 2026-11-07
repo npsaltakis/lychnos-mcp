@@ -6,7 +6,7 @@ import { PRESETS, rgbToHex } from "../lib/color";
 import { reportError } from "../lib/commands";
 import { t, useT } from "../lib/i18n";
 import { notify } from "../store/toasts";
-import { Button, Card } from "./ui";
+import { Button, Card, swatchClass } from "./ui";
 
 export function summarizeBatch(title: string, result: BatchResult): void {
   const confirmed = result.results.filter((r) => r.outcome === "confirmed").length;
@@ -63,8 +63,8 @@ export function AllLights({ count, onCount }: { count: number; onCount: number }
           </Button>
         </div>
       </div>
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <span className="mr-1 text-sm text-muted">{tr("all.colorAll")}</span>
+      <div role="group" aria-label={tr("all.colorAll")} className="mt-4 flex flex-wrap items-center gap-2">
+        <span className="mr-1 w-full text-sm text-muted sm:w-auto" aria-hidden>{tr("all.colorAll")}</span>
         {PRESETS.map((p) => (
           <button
             key={p.key}
@@ -72,7 +72,7 @@ export function AllLights({ count, onCount }: { count: number; onCount: number }
             aria-label={tr("all.colorAllAria", { color: tr(p.key) })}
             disabled={busy !== null || !count}
             onClick={() => run(`c-${p.key}`, tr("all.colorAllAria", { color: tr(p.key) }), { type: "set_color", color: p.rgb })}
-            className="size-8 rounded-full border-2 border-white/10 transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-40"
+            className={swatchClass}
             style={{ background: rgbToHex(p.rgb) }}
           />
         ))}

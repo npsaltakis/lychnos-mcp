@@ -7,13 +7,13 @@ import { useDevices, type Connection } from "../store/devices";
 import { Toasts } from "./Toasts";
 import { LanguageSwitch, cx } from "./ui";
 
-const NAV: { to: string; label: MessageKey; short?: MessageKey; icon: typeof House }[] = [
-  { to: "/", label: "nav.home", icon: House },
-  { to: "/scenes", label: "nav.scenes", icon: Sparkles },
-  { to: "/automations", label: "nav.automations", short: "nav.automationsShort", icon: CalendarClock },
-  { to: "/devices", label: "nav.devices", icon: Cpu },
-  { to: "/log", label: "nav.log", icon: ScrollText },
-  { to: "/settings", label: "nav.settings", icon: Settings },
+const NAV: { to: string; label: MessageKey; short?: MessageKey; icon: typeof House; mobile: boolean }[] = [
+  { to: "/", label: "nav.home", icon: House, mobile: true },
+  { to: "/scenes", label: "nav.scenes", icon: Sparkles, mobile: true },
+  { to: "/automations", label: "nav.automations", short: "nav.automationsShort", icon: CalendarClock, mobile: true },
+  { to: "/devices", label: "nav.devices", icon: Cpu, mobile: false },
+  { to: "/log", label: "nav.log", icon: ScrollText, mobile: true },
+  { to: "/settings", label: "nav.settings", icon: Settings, mobile: true },
 ];
 
 const CONNECTION: Record<Connection, { key: MessageKey; dot: string }> = {
@@ -63,6 +63,12 @@ export function Layout() {
   const t = useT();
   return (
     <div className="min-h-screen md:flex">
+      <a
+        href="#main"
+        className="sr-only z-50 rounded-xl bg-accent px-4 py-2 font-medium text-black focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
+      >
+        {t("app.skip")}
+      </a>
       {/* Sidebar (tablet/desktop) */}
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-line bg-panel/60 p-4 md:flex">
         <div className="mb-8 flex items-center gap-2 px-2">
@@ -78,12 +84,16 @@ export function Layout() {
               className={({ isActive }) =>
                 cx(
                   "flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm transition-colors",
-                  isActive ? "bg-panel-2 text-white" : "text-muted hover:bg-panel-2 hover:text-white",
+                  isActive ? "bg-panel-2 font-medium text-white" : "text-muted hover:bg-panel-2 hover:text-white",
                 )
               }
             >
-              <Icon className="size-4" aria-hidden />
-              {t(label)}
+              {({ isActive }) => (
+                <>
+                  <Icon className={cx("size-4", isActive && "text-accent")} aria-hidden />
+                  {t(label)}
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
@@ -107,22 +117,22 @@ export function Layout() {
             <LogoutButton compact />
           </div>
         </header>
-        <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 md:py-10">
+        <main id="main" tabIndex={-1} className="mx-auto max-w-6xl px-4 py-6 outline-none sm:px-6 md:py-10">
           <Outlet />
         </main>
       </div>
 
       {/* Bottom navigation (mobile) */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-line bg-panel/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
-        {NAV.map(({ to, label, short, icon: Icon }) => (
+      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-panel/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+        {NAV.filter((n) => n.mobile).map(({ to, label, short, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
             end={to === "/"}
             className={({ isActive }) =>
               cx(
-                "flex min-h-14 flex-col items-center justify-center gap-1 px-0.5 text-[10px] leading-tight",
-                isActive ? "text-accent" : "text-muted",
+                "flex min-h-16 flex-col items-center justify-center gap-1 px-0.5 text-xs leading-tight transition-colors",
+                isActive ? "font-medium text-accent" : "text-muted",
               )
             }
           >

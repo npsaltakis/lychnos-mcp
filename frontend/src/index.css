@@ -10,6 +10,25 @@
   --color-accent: #f5b942;
 }
 
+@layer base {
+  /* Tailwind v4 resets buttons to cursor: default */
+  button:not(:disabled),
+  [role="button"]:not(:disabled),
+  select:not(:disabled),
+  label:has(> input[type="checkbox"]) {
+    cursor: pointer;
+  }
+  /* One visible keyboard focus style everywhere (text fields use their accent border) */
+  :focus-visible:not(input, select, textarea) {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
 html,
 body,
 #root {

@@ -7,6 +7,7 @@ import { create } from "zustand";
 const el = {
   // app shell
   "app.loading": "Φόρτωση",
+  "app.skip": "Μετάβαση στο περιεχόμενο",
   "nav.home": "Αρχική",
   "nav.scenes": "Σκηνές",
   "nav.automations": "Αυτοματισμοί",
@@ -58,6 +59,7 @@ const el = {
   "outcome.mismatchLong": "Η συσκευή αναφέρει διαφορετική κατάσταση",
   "card.currentColor": "Τρέχον χρώμα {color}",
   "card.off": "Σβηστή",
+  "card.powerAria": "{name}: άναμμα/σβήσιμο",
   "card.offline": "Η συσκευή δεν απαντά. Οι τιμές παρακάτω είναι η τελευταία γνωστή κατάσταση{time}.",
   "card.brightness": "Φωτεινότητα",
   "card.color": "Χρώμα",
@@ -303,6 +305,8 @@ const el = {
   "set.sonoffText": "Οι εντολές LAN της Sonoff κρυπτογραφούνται με κλειδί που δίνει μία φορά το eWeLink. Τρέξε από τον φάκελο backend:",
   "set.sonoffStorage": "Τα κλειδιά αποθηκεύονται κρυπτογραφημένα στο {store}, όχι σε αρχείο .env. Τα δεδομένα και τα logs βρίσκονται στο %USERPROFILE%\\.smarthome-control (Windows) ή ~/.local/share/SmartHomeControl (Linux).",
   "set.keyringLinux": "keyring του συστήματος (GNOME Keyring / KWallet)",
+  "set.devicesLink": "Συσκευές και δωμάτια",
+  "set.devicesLinkHint": "Αναζήτηση, καταχώρηση και δωμάτια",
   "loc.title": "Τοποθεσία για ανατολή/δύση",
   "loc.text": "Χρειάζεται μόνο για αυτοματισμούς με ανατολή ή δύση ηλίου. Αρκεί η πόλη, όχι ακριβής διεύθυνση. Αποθηκεύεται τοπικά.",
   "loc.lat": "Γεωγραφικό πλάτος",
@@ -381,6 +385,7 @@ export type MessageKey = keyof typeof el;
 
 const en: Record<MessageKey, string> = {
   "app.loading": "Loading",
+  "app.skip": "Skip to content",
   "nav.home": "Home",
   "nav.scenes": "Scenes",
   "nav.automations": "Automations",
@@ -429,6 +434,7 @@ const en: Record<MessageKey, string> = {
   "outcome.mismatchLong": "The device reports a different state",
   "card.currentColor": "Current colour {color}",
   "card.off": "Off",
+  "card.powerAria": "{name}: on/off",
   "card.offline": "The device is not answering. The values below are the last known state{time}.",
   "card.brightness": "Brightness",
   "card.color": "Colour",
@@ -665,6 +671,8 @@ const en: Record<MessageKey, string> = {
   "set.sonoffText": "Sonoff LAN commands are encrypted with a key that eWeLink provides once. Run from the backend folder:",
   "set.sonoffStorage": "Keys are stored encrypted in the {store}, not in a .env file. Data and logs are in %USERPROFILE%\\.smarthome-control (Windows) or ~/.local/share/SmartHomeControl (Linux).",
   "set.keyringLinux": "system keyring (GNOME Keyring / KWallet)",
+  "set.devicesLink": "Devices and rooms",
+  "set.devicesLinkHint": "Search, registration and rooms",
   "loc.title": "Location for sunrise/sunset",
   "loc.text": "Only needed for sunrise/sunset automations. Your city is enough, no exact address. Stored locally.",
   "loc.lat": "Latitude",

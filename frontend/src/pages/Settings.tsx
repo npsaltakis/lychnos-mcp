@@ -1,4 +1,4 @@
-import { MapPin } from "lucide-react";
+import { ChevronRight, Cpu, MapPin } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
@@ -109,7 +109,20 @@ export function Settings() {
   return (
     <>
       <PageHeader title={tr("set.title")} subtitle={tr("set.subtitle")} />
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
+        {/* Devices is not in the phone's bottom bar */}
+        <Link
+          to="/devices"
+          className="flex items-center gap-3 rounded-2xl border border-line bg-panel p-4 transition-colors hover:border-gray-500 md:hidden"
+        >
+          <Cpu className="size-5 text-accent" aria-hidden />
+          <span className="min-w-0 flex-1">
+            <span className="block font-semibold">{tr("set.devicesLink")}</span>
+            <span className="block text-sm text-muted">{tr("set.devicesLinkHint")}</span>
+          </span>
+          <ChevronRight className="size-5 text-muted" aria-hidden />
+        </Link>
+
         <Card>
           <h2 className="mb-2 font-semibold">{tr("set.system")}</h2>
           <Row label={tr("set.version")}>{info?.version ?? "—"}</Row>

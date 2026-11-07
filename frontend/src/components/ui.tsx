@@ -33,8 +33,8 @@ export function Button({
       {...rest}
       disabled={rest.disabled || busy}
       className={cx(
-        "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-3.5 text-sm font-medium transition-colors",
-        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+        "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-3.5 text-sm font-medium select-none",
+        "transition-[color,background-color,border-color,transform] duration-150 active:scale-[0.97] pointer-coarse:min-h-11",
         "disabled:cursor-not-allowed disabled:opacity-50",
         styles[variant],
         className,
@@ -68,8 +68,9 @@ export function Toggle({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cx(
-        "relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors",
-        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+        "relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors duration-200",
+        // invisible 48px hit area around the 32px track
+        "after:absolute after:-inset-2 after:content-['']",
         "disabled:cursor-not-allowed disabled:opacity-40",
         checked ? "bg-accent" : "bg-line",
       )}
@@ -175,7 +176,7 @@ export function LanguageSwitch({ className }: { className?: string }) {
           aria-pressed={lang === l}
           onClick={() => setLang(l)}
           className={cx(
-            "min-h-7 min-w-9 rounded-md px-2 font-medium uppercase transition-colors",
+            "min-h-8 min-w-10 rounded-md px-2 font-medium uppercase transition-colors",
             lang === l ? "bg-panel-2 text-white" : "text-muted hover:text-white",
           )}
         >
@@ -187,6 +188,9 @@ export function LanguageSwitch({ className }: { className?: string }) {
 }
 
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
+  useEffect(() => {
+    document.title = `${title} · Lychnos`;
+  }, [title]);
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div>
@@ -207,3 +211,7 @@ export function Empty({ icon, title, children }: { icon: ReactNode; title: strin
     </div>
   );
 }
+
+/** Round colour preset button; 44px on touch screens. */
+export const swatchClass =
+  "size-9 shrink-0 rounded-full border-2 border-white/10 transition-transform duration-150 hover:scale-110 active:scale-95 disabled:opacity-40 disabled:hover:scale-100 pointer-coarse:size-11";
