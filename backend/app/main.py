@@ -33,7 +33,9 @@ from app.persistence.repositories import (
 from app.providers.base import DeviceProvider
 from app.providers.registry import ProviderRegistry
 from app.services.auth_service import AuthService
+from app.core.secrets import KeyringSecretStore, SecretStore
 from app.services.automation_service import AutomationService
+from app.services.notification_service import NotificationService
 from app.services.room_service import RoomService
 from app.services.device_service import DeviceService
 from app.services.events import EventBus
@@ -46,9 +48,11 @@ log = logging.getLogger(__name__)
 def create_app(
     settings: Settings | None = None,
     providers: Iterable[DeviceProvider] | None = None,
+    secret_store: SecretStore | None = None,
 ) -> FastAPI:
-    """Build the app. ``providers`` overrides the configured providers (used by tests)."""
+    """Build the app. ``providers`` / ``secret_store`` override the real ones (used by tests)."""
     settings = settings or get_settings()
+    secrets_backend: SecretStore = secret_store or KeyringSecretStore()
     settings.validate_exposure()
 
     @asynccontextmanager
@@ -94,9 +98,14 @@ def create_app(
         app.state.room_service = room_service
         app.state.automation_service = automation_service
         app.state.activity_repo = activity_repo
+        notification_service = NotificationService(
+            SettingsRepository(db), secrets_backend, bus, device_service
+        )
+        app.state.notification_service = notification_service
 
         await device_service.start()
         await automation_service.start()
+        await notification_service.start()
         log.info(
             "backend started",
             extra={"ctx": {"host": settings.host, "port": settings.port, "version": __version__}},
@@ -104,6 +113,7 @@ def create_app(
         try:
             yield
         finally:
+            await notification_service.stop()
             await automation_service.stop()
             await device_service.stop()
             await db.close()

@@ -19,6 +19,7 @@ from app.persistence.repositories import ActivityRepository
 from app.services.auth_service import AuthService
 from app.services.automation_service import AutomationService
 from app.services.device_service import DeviceService
+from app.services.notification_service import NotificationService
 from app.services.room_service import RoomService
 from app.services.scene_service import SceneService
 
@@ -84,10 +85,15 @@ def get_activity_repo(request: Request) -> ActivityRepository:
     return request.app.state.activity_repo
 
 
+def get_notification_service(request: Request) -> NotificationService:
+    return request.app.state.notification_service
+
+
 Devices = Annotated[DeviceService, Depends(get_device_service)]
 Scenes = Annotated[SceneService, Depends(get_scene_service)]
 Auth = Annotated[AuthService, Depends(get_auth_service)]
 Rooms = Annotated[RoomService, Depends(get_room_service)]
 Automations = Annotated[AutomationService, Depends(get_automation_service)]
 Activity = Annotated[ActivityRepository, Depends(get_activity_repo)]
+Notifications = Annotated[NotificationService, Depends(get_notification_service)]
 Source = Annotated[str, Depends(get_source)]

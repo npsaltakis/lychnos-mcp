@@ -13,6 +13,7 @@ dependencies = [
     "zeroconf>=0.136",
     "cryptography>=43",
     "keyring>=25",
+    "pywebpush>=2.0",
 ]
 
 [project.optional-dependencies]

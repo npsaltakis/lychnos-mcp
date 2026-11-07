@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from pydantic import BaseModel, Field
 
@@ -12,6 +14,7 @@ from app.api.deps import (
     Auth,
     Automations,
     Devices,
+    Notifications,
     Rooms,
     Scenes,
     Source,
@@ -19,6 +22,7 @@ from app.api.deps import (
     require_auth,
 )
 from app.domain.automations import Automation, AutomationInput, Location
+from app.domain.notifications import NotificationUpdate, NotificationView, PushSubscription
 from app.core.errors import CommandFailedError, UnauthorizedError
 from app.domain.models import (
     ActivityEntry,
@@ -279,6 +283,56 @@ async def get_location(automations: Automations) -> Location | None:
 @api.put("/settings/location", tags=["automations"])
 async def set_location(body: Location, automations: Automations) -> Location:
     return await automations.set_location(body)
+
+
+# ----------------------------------------------------------------------------- notifications
+
+
+class TestRequest(BaseModel):
+    channel: Literal["ntfy", "telegram", "email", "webpush"] | None = None
+
+
+class TelegramChatsRequest(BaseModel):
+    token: str | None = Field(None, max_length=200)
+
+
+class Unsubscribe(BaseModel):
+    endpoint: str = Field(max_length=1000)
+
+
+@api.get("/notifications", tags=["notifications"])
+async def get_notifications(notifications: Notifications) -> NotificationView:
+    return notifications.view()
+
+
+@api.put("/notifications", tags=["notifications"])
+async def update_notifications(body: NotificationUpdate, notifications: Notifications) -> NotificationView:
+    return await notifications.update(body)
+
+
+@api.post("/notifications/test", tags=["notifications"])
+async def test_notifications(notifications: Notifications, body: TestRequest | None = None) -> dict[str, str]:
+    return await notifications.test(body.channel if body else None)
+
+
+@api.post("/notifications/telegram/chats", tags=["notifications"])
+async def telegram_chats(notifications: Notifications, body: TelegramChatsRequest | None = None) -> list[dict[str, str]]:
+    return await notifications.telegram_chats(body.token if body else None)
+
+
+@api.get("/notifications/webpush/key", tags=["notifications"])
+async def webpush_key(notifications: Notifications) -> dict[str, str]:
+    return {"public_key": notifications.vapid_public_key()}
+
+
+@api.post("/notifications/webpush/subscriptions", tags=["notifications"])
+async def webpush_subscribe(body: PushSubscription, notifications: Notifications) -> NotificationView:
+    return await notifications.add_subscription(body)
+
+
+@api.post("/notifications/webpush/unsubscribe", tags=["notifications"])
+async def webpush_unsubscribe(body: Unsubscribe, notifications: Notifications) -> NotificationView:
+    return await notifications.remove_subscription(body.endpoint)
 
 
 # ----------------------------------------------------------------------------- history

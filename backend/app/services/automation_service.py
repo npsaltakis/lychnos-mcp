@@ -317,6 +317,7 @@ class AutomationService:
         self._automations[automation_id] = updated
         await self._repo.save(updated)
         self._changed()
+        self._bus.publish(EventType.AUTOMATION_RAN, {"id": automation_id, "name": automation.name, **result})
 
     # ------------------------------------------------------------------ helpers
 

@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
+from app.core.secrets import MemorySecretStore
 from app.main import create_app
 from tests.fakes import POWER_ONLY_CAPS, FakeLight, FakeProvider
 
@@ -41,7 +42,7 @@ def provider() -> FakeProvider:
 
 @pytest.fixture
 def client(settings: Settings, provider: FakeProvider) -> Iterator[TestClient]:
-    app = create_app(settings, providers=[provider])
+    app = create_app(settings, providers=[provider], secret_store=MemorySecretStore())
     with TestClient(app) as test_client:
         yield test_client
 

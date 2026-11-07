@@ -1,6 +1,9 @@
 import { useAuth } from "../store/auth";
 import type {
   ActivityEntry,
+  Channel,
+  NotificationSettings,
+  NotificationView,
   Automation,
   AutomationInput,
   Location,
@@ -96,6 +99,18 @@ export const api = {
   location: () => request<Location | null>("GET", "/settings/location"),
   setLocation: (loc: Location) => request<Location>("PUT", "/settings/location", loc),
   activity: (limit = 100) => request<ActivityEntry[]>("GET", `/activity?limit=${limit}`),
+  notifications: () => request<NotificationView>("GET", "/notifications"),
+  saveNotifications: (body: NotificationSettings & { secrets: Record<string, string | null> }) =>
+    request<NotificationView>("PUT", "/notifications", body),
+  testNotification: (channel?: Channel) =>
+    request<Record<string, string>>("POST", "/notifications/test", channel ? { channel } : {}),
+  telegramChats: (token?: string) =>
+    request<{ id: string; name: string }[]>("POST", "/notifications/telegram/chats", { token: token || null }),
+  webpushKey: () => request<{ public_key: string }>("GET", "/notifications/webpush/key"),
+  webpushSubscribe: (sub: PushSubscriptionJSON) =>
+    request<NotificationView>("POST", "/notifications/webpush/subscriptions", sub),
+  webpushUnsubscribe: (endpoint: string) =>
+    request<NotificationView>("POST", "/notifications/webpush/unsubscribe", { endpoint }),
 };
 
 /** Ask the backend whether this browser has a valid session. */

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import type { SystemInfo } from "../api/types";
+import { NotificationsCard } from "../components/NotificationsCard";
 import { Button, Card, PageHeader } from "../components/ui";
 import { reportError } from "../lib/commands";
 import { SECRET_STORE, VENV_PY } from "../lib/platform";
@@ -134,6 +135,8 @@ export function Settings() {
             </p>
           )}
         </Card>
+
+        <NotificationsCard />
 
         <LocationCard />
 

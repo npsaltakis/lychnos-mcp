@@ -78,6 +78,21 @@ The name is also an acronym of what the project is:
   backend was off are skipped, never replayed.
 - **History**: every command with time, device, result and who sent it (dashboard, Claude, a scene or an
   automation).
+- **Notifications** (all off by default, each with its own switch and a *Test* button in Settings):
+  [ntfy](https://ntfy.sh) (free phone app, no account), Telegram (your own bot), email (SMTP, e.g. Gmail with an
+  App Password) and browser push notifications from the dashboard itself. Choose which events notify you: a light
+  goes offline / comes back, an automation fails or runs, a command fails. Tokens and passwords are kept in the
+  OS keyring, never in the database or `.env`.
+
+  | Channel | Setup |
+  |---|---|
+  | ntfy | Install the ntfy app, subscribe to the (random) topic shown in Settings. Anyone who knows the topic name can read it, so keep it random. |
+  | Telegram | Create a bot with @BotFather, send `/start` to it, paste the token and press *Find chat*. |
+  | Email | SMTP server, port, user, App Password, sender and recipient. |
+  | Browser | *Enable in this browser*. Needs a secure context: `http://127.0.0.1:3000` on this PC, or HTTPS (e.g. Tailscale) on a phone. |
+
+  Viber and WhatsApp are not supported: Viber bots now require a paid commercial agreement, and WhatsApp needs a
+  Meta Business account, a separate phone number and paid template messages.
 - **Capability detection**: each card only shows the controls that device verifiably supports.
 - **Confirmed vs pending state**: the UI shows "pending…" while a command is in flight and the result
   (`confirmed` / `unconfirmed` / `mismatch` / `failed`) with the round-trip time.
@@ -505,6 +520,7 @@ cd frontend;    npm run dev      # http://127.0.0.1:5173
 - [x] Phase 7: background start/stop/status scripts, autostart (Task Scheduler / systemd), remote access guide (LAN, Tailscale)
 - [x] Xiaomi / Yeelight provider (awaiting hardware verification)
 - [x] Rooms, automations (time, sunrise/sunset, wake-up light) and command history
+- [x] Notifications: ntfy, Telegram, email, browser push (all optional, off by default)
 - [ ] Sensor- and presence-based automations (needs sensors)
 - [ ] More providers: Matter, …
 

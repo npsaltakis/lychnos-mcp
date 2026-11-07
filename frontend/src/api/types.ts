@@ -170,6 +170,35 @@ export interface ActivityEntry {
   detail: string | null;
 }
 
+export interface NotificationSettings {
+  ntfy: { enabled: boolean; server: string; topic: string };
+  telegram: { enabled: boolean; chat_id: string };
+  email: {
+    enabled: boolean;
+    smtp_host: string;
+    smtp_port: number;
+    security: "starttls" | "ssl" | "none";
+    username: string;
+    sender: string;
+    recipient: string;
+  };
+  webpush: { enabled: boolean };
+  events: {
+    device_offline: boolean;
+    device_online: boolean;
+    automation_failed: boolean;
+    automation_ran: boolean;
+    command_failed: boolean;
+  };
+}
+
+export interface NotificationView extends NotificationSettings {
+  secrets_set: { ntfy_token: boolean; telegram_token: boolean; smtp_password: boolean };
+  webpush_devices: number;
+}
+
+export type Channel = "ntfy" | "telegram" | "email" | "webpush";
+
 export type LiveEvent =
   | { type: "snapshot"; data: { devices: DeviceView[] } }
   | { type: "device_runtime"; data: { device_id: string; runtime: DeviceRuntime }; ts: string }
