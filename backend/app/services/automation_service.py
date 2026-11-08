@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -47,11 +48,15 @@ log = logging.getLogger(__name__)
 
 LOCATION_KEY = "location"
 TICK_S = 15.0
+CLOUDY_PCT = 70  # forecast cloud cover from which "cloudy" applies
 FADE_MIN_STEP_S = 15.0
 _sleep = asyncio.sleep  # indirection so tests can run fades instantly
 
 
-def next_run(trigger: Trigger, after: datetime, location: Location | None) -> datetime | None:
+def next_run(
+    trigger: Trigger, after: datetime, location: Location | None,
+    cloud_cover: Callable[[datetime], int | None] | None = None,
+) -> datetime | None:
     """First moment strictly after ``after`` when the trigger fires (aware datetime), or None."""
     local_after = after.astimezone()
     for offset_days in range(0, 9):
@@ -69,6 +74,10 @@ def next_run(trigger: Trigger, after: datetime, location: Location | None) -> da
             if event is None:
                 continue
             candidate = event + timedelta(minutes=trigger.offset_min)
+            if trigger.event == "sunset" and trigger.cloudy_earlier_min and cloud_cover is not None:
+                cover = cloud_cover(event)
+                if cover is not None and cover >= CLOUDY_PCT:
+                    candidate -= timedelta(minutes=trigger.cloudy_earlier_min)
         if candidate > after:
             return candidate
     return None
@@ -108,6 +117,7 @@ class AutomationService:
         self._location: Location | None = None
         self._loop_task: asyncio.Task[None] | None = None
         self._running: dict[str, asyncio.Task[None]] = {}
+        self.cloud_cover: Callable[[datetime], int | None] | None = None  # set by the weather service
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -216,7 +226,9 @@ class AutomationService:
             due = self._next.get(automation.id)
             if not automation.enabled or due is None or now < due:
                 continue
-            self._next[automation.id] = next_run(automation.trigger, now + timedelta(seconds=1), self._location)
+            self._next[automation.id] = next_run(
+                automation.trigger, now + timedelta(seconds=1), self._location, self.cloud_cover
+            )
             if automation.id in self._running:
                 log.info("automation still running, skipped", extra={"ctx": {"automation": automation.name}})
                 continue
@@ -225,7 +237,23 @@ class AutomationService:
     def _reschedule_all(self) -> None:
         now = utcnow()
         for automation in self._automations.values():
-            self._next[automation.id] = next_run(automation.trigger, now, self._location)
+            self._next[automation.id] = next_run(automation.trigger, now, self._location, self.cloud_cover)
+
+    def weather_updated(self) -> None:
+        """New forecast: re-plan cloud-dependent sunset runs (but not ones due within 15 minutes)."""
+        now = utcnow()
+        changed = False
+        for automation in self._automations.values():
+            trig = automation.trigger
+            if not isinstance(trig, SunTrigger) or not trig.cloudy_earlier_min:
+                continue
+            due = self._next.get(automation.id)
+            if due is not None and due - now < timedelta(minutes=15):
+                continue
+            self._next[automation.id] = next_run(trig, now, self._location, self.cloud_cover)
+            changed = True
+        if changed:
+            self._changed()
 
     def _with_next(self, automation: Automation) -> Automation:
         return automation.model_copy(update={"next_run_at": self._next.get(automation.id) if automation.enabled else None})
@@ -358,7 +386,7 @@ class AutomationService:
     async def _store(self, automation: Automation) -> Automation:
         await self._repo.save(automation)
         self._automations[automation.id] = automation
-        self._next[automation.id] = next_run(automation.trigger, utcnow(), self._location)
+        self._next[automation.id] = next_run(automation.trigger, utcnow(), self._location, self.cloud_cover)
         self._changed()
         return self._with_next(automation)
 

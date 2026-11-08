@@ -20,6 +20,7 @@ interface Form {
   when: When;
   time: string;
   offset: number;
+  cloudyEarlier: number;
   days: number[];
   kind: Kind;
   target: string; // "all" | "room:<id>" | "device:<id>"
@@ -38,6 +39,7 @@ const EMPTY: Form = {
   when: "time",
   time: "21:00",
   offset: 0,
+  cloudyEarlier: 0,
   days: [0, 1, 2, 3, 4, 5, 6],
   kind: "on",
   target: "all",
@@ -65,6 +67,7 @@ function fromAutomation(a: Automation): Form {
   else {
     f.when = a.trigger.event;
     f.offset = a.trigger.offset_min;
+    f.cloudyEarlier = a.trigger.cloudy_earlier_min ?? 0;
   }
   const act = a.action;
   if (act.type === "scene") {
@@ -103,7 +106,13 @@ function toInput(f: Form, enabled: boolean): AutomationInput {
   const trigger: Trigger =
     f.when === "time"
       ? { type: "time", time: f.time, days: f.days }
-      : { type: "sun", event: f.when, offset_min: f.offset, days: f.days };
+      : {
+          type: "sun",
+          event: f.when,
+          offset_min: f.offset,
+          days: f.days,
+          cloudy_earlier_min: f.when === "sunset" ? f.cloudyEarlier : 0,
+        };
   let action: AutomationAction;
   const target = stringToTarget(f.target);
   if (f.kind === "scene") action = { type: "scene", scene_id: f.sceneId };
@@ -188,6 +197,18 @@ function Editor({ initial, location, onDone }: { initial: Automation | null; loc
           <label className="flex flex-wrap items-center gap-2 text-sm">
             <input id="auto-offset" type="number" min={-240} max={240} step={5} className={cx(input, "w-28")} value={f.offset} onChange={(e) => set({ offset: Number(e.target.value) })} />
             <span className="text-muted">{tr(f.offset < 0 ? "auto.offsetBefore" : "auto.offsetAfter", { event })}</span>
+          </label>
+        )}
+        {f.when === "sunset" && (
+          <label className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-muted">{tr("auto.cloudy")}</span>
+            <select className={cx(input, "w-40")} value={f.cloudyEarlier} onChange={(e) => set({ cloudyEarlier: Number(e.target.value) })}>
+              {[0, 15, 30, 45, 60].map((m) => (
+                <option key={m} value={m}>
+                  {m ? tr("auto.cloudyEarlier", { n: m }) : tr("auto.cloudyNo")}
+                </option>
+              ))}
+            </select>
           </label>
         )}
         {needsLocation && (
@@ -314,7 +335,7 @@ function describe(a: Automation, names: Record<string, string>, rooms: Record<st
   const when =
     a.trigger.type === "time"
       ? a.trigger.time
-      : `${t(a.trigger.event === "sunrise" ? "auto.sunrise" : "auto.sunset")}${a.trigger.offset_min ? ` ${a.trigger.offset_min > 0 ? "+" : ""}${a.trigger.offset_min}′` : ""}`;
+      : `${t(a.trigger.event === "sunrise" ? "auto.sunrise" : "auto.sunset")}${a.trigger.offset_min ? ` ${a.trigger.offset_min > 0 ? "+" : ""}${a.trigger.offset_min}′` : ""}${a.trigger.cloudy_earlier_min ? ` ${t("auto.cloudyShort", { n: a.trigger.cloudy_earlier_min })}` : ""}`;
   const act = a.action;
   let what: string;
   if (act.type === "scene") what = t("auto.desc.scene", { name: scenes[act.scene_id] ?? "?" });

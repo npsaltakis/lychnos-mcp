@@ -42,7 +42,7 @@ def provider() -> FakeProvider:
 
 @pytest.fixture
 def client(settings: Settings, provider: FakeProvider) -> Iterator[TestClient]:
-    app = create_app(settings, providers=[provider], secret_store=MemorySecretStore())
+    app = create_app(settings, providers=[provider], secret_store=MemorySecretStore(), weather_enabled=False)
     with TestClient(app) as test_client:
         yield test_client
 

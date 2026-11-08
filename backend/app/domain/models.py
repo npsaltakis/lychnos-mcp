@@ -302,12 +302,21 @@ class SceneAction(BaseModel):
     brightness: int | None = Field(None, ge=0, le=100)
     color: RGB | None = None
     color_temp_k: int | None = Field(None, ge=1000, le=12000)
+    # Extras, applied after the values above (at most one of them):
+    gradient: list[RGB] | None = Field(None, min_length=2, max_length=6, description="RGBIC lights: colours along the light")
+    gradient_per_bar: bool = True
+    effect: Literal["rainbow", "breathe", "candle"] | None = None
+    music_style: str | None = Field(None, max_length=40, description="Lights with music mode: the style to start")
+    music_sensitivity: int = Field(80, ge=0, le=100)
 
     @model_validator(mode="after")
     def _check(self) -> SceneAction:
         if self.color is not None and self.color_temp_k is not None:
             raise ValueError("A scene action can set either color or color_temp_k, not both")
-        has_light_values = any(v is not None for v in (self.brightness, self.color, self.color_temp_k))
+        extras = [x for x in (self.gradient, self.effect, self.music_style) if x is not None]
+        if len(extras) > 1:
+            raise ValueError("A scene action can use only one of gradient, effect or music")
+        has_light_values = any(v is not None for v in (self.brightness, self.color, self.color_temp_k)) or bool(extras)
         if self.power is False and has_light_values:
             raise ValueError("power=false cannot be combined with brightness/colour values")
         if self.power is None and not has_light_values:

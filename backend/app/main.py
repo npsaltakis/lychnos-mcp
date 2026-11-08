@@ -42,6 +42,7 @@ from app.services.telegram_bot import TelegramBot
 from app.services.usage_service import UsageService
 from app.services.presence_service import PresenceService
 from app.services.effect_service import EffectService
+from app.services.weather_service import WeatherService
 from app.services.notification_service import NotificationService
 from app.services.room_service import RoomService
 from app.services.device_service import DeviceService
@@ -57,6 +58,7 @@ def create_app(
     providers: Iterable[DeviceProvider] | None = None,
     secret_store: SecretStore | None = None,
     presence_scanner: object | None = None,
+    weather_enabled: bool = True,
 ) -> FastAPI:
     """Build the app. ``providers`` / ``secret_store`` override the real ones (used by tests)."""
     settings = settings or get_settings()
@@ -87,6 +89,7 @@ def create_app(
         effect_service = EffectService(device_service, bus, activity_repo)
         app.state.effect_service = effect_service
         scene_service = SceneService(SceneRepository(db), device_service, bus)
+        scene_service.effects = effect_service
         room_service = RoomService(room_repo, device_service, bus)
         automation_service = AutomationService(
             AutomationRepository(db), SettingsRepository(db), room_repo, device_service, scene_service, bus
@@ -112,6 +115,11 @@ def create_app(
             SettingsRepository(db), device_service, bus, automation_service.get_location
         )
         app.state.vacation_service = vacation_service
+        weather_service = WeatherService(
+            automation_service.get_location, on_update=automation_service.weather_updated
+        )
+        automation_service.cloud_cover = weather_service.cloud_cover_at
+        app.state.weather_service = weather_service
         backup_service = BackupService(db, settings.data_dir / "backups")
         app.state.backup_service = backup_service
         presence_service = PresenceService(
@@ -132,6 +140,8 @@ def create_app(
         await vacation_service.start()
         await backup_service.start()
         await presence_service.start()
+        if weather_enabled:
+            await weather_service.start()
         await notification_service.start()
         await telegram_bot.start()
         log.info(
@@ -145,6 +155,7 @@ def create_app(
             await effect_service.stop(log_it=False)
             await notification_service.stop()
             await presence_service.stop()
+            await weather_service.stop()
             await backup_service.stop()
             await vacation_service.stop()
             await automation_service.stop()

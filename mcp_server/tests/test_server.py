@@ -207,7 +207,7 @@ async def test_create_automation_sunset_in_room(backend: FakeBackend) -> None:
         name="Evening", when="sunset", action="turn_on", target="living room Σαλόνι", offset_minutes=-15, days=["weekdays"]
     )
     sent = backend.created_automation
-    assert sent["trigger"] == {"type": "sun", "event": "sunset", "offset_min": -15, "days": [0, 1, 2, 3, 4]}
+    assert sent["trigger"] == {"type": "sun", "event": "sunset", "offset_min": -15, "cloudy_earlier_min": 0, "days": [0, 1, 2, 3, 4]}
     assert sent["action"]["target"] == {"kind": "room", "id": "r1"}
     assert sent["action"]["command"] == {"type": "set_power", "on": True}
     assert result["created"] is True and result["when"] == "sunset -15 min"

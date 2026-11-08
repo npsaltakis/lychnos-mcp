@@ -44,6 +44,9 @@ class SunTrigger(BaseModel):
     event: Literal["sunrise", "sunset"]
     offset_min: int = Field(0, ge=-240, le=240, description="Minutes before (<0) or after (>0)")
     days: list[int] = Field(default_factory=lambda: list(ALL_DAYS))
+    cloudy_earlier_min: int = Field(
+        0, ge=0, le=90, description="Sunset only: run this many minutes earlier when the forecast is cloudy"
+    )
 
     @field_validator("days")
     @classmethod

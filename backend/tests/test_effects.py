@@ -46,3 +46,21 @@ def test_stop_and_validation(client: TestClient, monkeypatch) -> None:
     assert bad.status_code == 422
     client.post("/api/effects", json={"effect": "breathe", "target": {"kind": "all"}}, headers=AUTH)
     assert client.post("/api/effects/stop", json={}, headers=AUTH).json() == []
+
+
+def test_scene_can_start_an_effect(client: TestClient, monkeypatch) -> None:
+    async def fast(_s: float) -> None:
+        await asyncio.sleep(0.01)
+
+    monkeypatch.setattr(effect_module, "_sleep", fast)
+    ids = register_all(client)
+    desk, plug = ids["Desk Bar"], ids["Plug Lamp"]
+    bad = client.post("/api/scenes", json={"name": "x", "actions": [{"device_id": plug, "effect": "candle"}]}, headers=AUTH)
+    assert bad.status_code == 422
+    both = {"name": "y", "actions": [{"device_id": desk, "effect": "candle", "music_style": "rhythm"}]}
+    assert client.post("/api/scenes", json=both, headers=AUTH).status_code == 422
+    scene = client.post("/api/scenes", json={"name": "Πάρτι", "actions": [
+        {"device_id": desk, "brightness": 60, "effect": "rainbow"}]}, headers=AUTH).json()
+    client.post(f"/api/scenes/{scene['id']}/activate", headers=AUTH)
+    assert client.get("/api/effects", headers=AUTH).json()[0]["effect"] == "rainbow"
+    client.post("/api/effects/stop", json={}, headers=AUTH)

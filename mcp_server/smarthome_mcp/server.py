@@ -519,6 +519,7 @@ async def create_automation(
     offset_minutes: int = Field(0, ge=-240, le=240),
     days: list[str] | None = None,
     fade_minutes: int = Field(15, ge=1, le=120),
+    cloudy_earlier_minutes: int = 0,
 ) -> dict[str, Any]:
     """Create a scheduled automation (local time of the home computer).
 
@@ -532,6 +533,7 @@ async def create_automation(
             after `fade_minutes`.
         target: Light name, room name or "all" (ignored for "scene").
         offset_minutes: For sunrise/sunset: minutes before (negative) or after (positive).
+        cloudy_earlier_minutes: For sunset: run this much earlier when the forecast is cloudy.
         days: e.g. ["weekdays"], ["weekend"], ["mon", "fri"]; default every day.
 
     Examples: "every day at sunset turn on the living room" → when="sunset", action="turn_on",
@@ -541,7 +543,8 @@ async def create_automation(
     try:
         if when.lower() in ("sunrise", "sunset", "ανατολη", "δυση", "ανατολή", "δύση"):
             event = "sunrise" if when.lower() in ("sunrise", "ανατολη", "ανατολή") else "sunset"
-            trigger: dict[str, Any] = {"type": "sun", "event": event, "offset_min": offset_minutes}
+            trigger: dict[str, Any] = {"type": "sun", "event": event, "offset_min": offset_minutes,
+                                       "cloudy_earlier_min": cloudy_earlier_minutes if event == "sunset" else 0}
         else:
             trigger = {"type": "time", "time": when.strip()}
         trigger["days"] = parse_days(days)

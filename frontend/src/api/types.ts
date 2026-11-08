@@ -94,6 +94,11 @@ export interface SceneAction {
   brightness?: number | null;
   color?: RGB | null;
   color_temp_k?: number | null;
+  gradient?: RGB[] | null;
+  gradient_per_bar?: boolean;
+  effect?: EffectName | null;
+  music_style?: string | null;
+  music_sensitivity?: number;
 }
 
 export interface SceneInput {
@@ -127,7 +132,7 @@ export interface Room {
 
 export type Trigger =
   | { type: "time"; time: string; days: number[] }
-  | { type: "sun"; event: "sunrise" | "sunset"; offset_min: number; days: number[] };
+  | { type: "sun"; event: "sunrise" | "sunset"; offset_min: number; days: number[]; cloudy_earlier_min?: number };
 
 export interface Target {
   kind: "all" | "room" | "device";
@@ -174,6 +179,31 @@ export interface Neighbor {
   ip: string;
   mac: string;
   state: string;
+}
+
+export interface WeatherDay {
+  date: string;
+  weather_code: number;
+  temp_max: number;
+  temp_min: number;
+  precipitation_probability: number | null;
+  sunrise: string | null;
+  sunset: string | null;
+}
+
+export interface WeatherReport {
+  now: {
+    temperature: number;
+    apparent_temperature: number | null;
+    weather_code: number;
+    cloud_cover: number | null;
+    is_day: boolean;
+    wind_speed: number | null;
+    humidity: number | null;
+  };
+  days: WeatherDay[];
+  fetched_at: string;
+  location_label: string;
 }
 
 export interface UsageReport {

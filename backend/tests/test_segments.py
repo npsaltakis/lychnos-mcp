@@ -3,7 +3,7 @@
 import base64
 import json
 
-from app.api.routes import blend
+from app.services.device_service import blend
 from app.domain.models import RGB
 from app.providers.govee_lan import protocol
 

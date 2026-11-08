@@ -109,6 +109,19 @@ def describe_command(command: Command) -> str:
     return command.type
 
 
+def blend(colors: list[RGB], count: int) -> list[RGB]:
+    if len(colors) == 1:
+        return colors * count
+    out = []
+    for i in range(count):
+        pos = i * (len(colors) - 1) / max(count - 1, 1)
+        k = min(int(pos), len(colors) - 2)
+        t = pos - k
+        a, b = colors[k], colors[k + 1]
+        out.append(RGB(r=round(a.r + (b.r - a.r) * t), g=round(a.g + (b.g - a.g) * t), b=round(a.b + (b.b - a.b) * t)))
+    return out
+
+
 class DeviceService:
     def __init__(
         self,
@@ -416,6 +429,10 @@ class DeviceService:
         results = await asyncio.gather(*(self._execute_validated(d, command, source) for d in targets))
         return BatchResult.build(list(results), skipped)
 
+    def supports_music(self, device_id: str) -> bool:
+        device = self.get_device(device_id)
+        return self._providers.get(device.provider).supports_music(device)
+
     def music_on(self, device_id: str) -> bool:
         return device_id in self._music_on
 
@@ -460,6 +477,17 @@ class DeviceService:
             )
             self._bus.publish(EventType.ACTIVITY_ADDED)
         return self._store.get(device.id)
+
+    async def apply_gradient(
+        self, device_id: str, colors: list[RGB], *, per_bar: bool = True, source: str = "api"
+    ) -> DeviceRuntime:
+        """Blend the colours along the light (or along each bar of a two-bar light)."""
+        count = self.segment_count(device_id)
+        if count == 0:
+            raise InvalidCommandError(f"{self.get_device(device_id).name} has no colour segments")
+        if per_bar and count == 12:  # Govee H6056: two bars of 6
+            return await self.set_segments(device_id, blend(colors, 6) * 2, source=source)
+        return await self.set_segments(device_id, blend(colors, count), source=source)
 
     def segment_count(self, device_id: str) -> int:
         device = self.get_device(device_id)

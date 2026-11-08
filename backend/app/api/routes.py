@@ -25,6 +25,7 @@ from app.api.deps import (
 from app.domain.automations import Automation, AutomationInput, Location
 from app.services.backup_service import BackupFile
 from app.services.usage_service import UsageReport
+from app.services.weather_service import WeatherReport
 from app.services.effect_service import EffectRequest, RunningEffect
 from app.services.presence_service import Neighbor, PresenceSettings, PresenceStatus
 from app.services.vacation_service import VacationSettings, VacationStatus
@@ -322,19 +323,6 @@ class SegmentsRequest(BaseModel):
     )
 
 
-def blend(colors: list[RGB], count: int) -> list[RGB]:
-    if len(colors) == 1:
-        return colors * count
-    out = []
-    for i in range(count):
-        pos = i * (len(colors) - 1) / max(count - 1, 1)
-        k = min(int(pos), len(colors) - 2)
-        t = pos - k
-        a, b = colors[k], colors[k + 1]
-        out.append(RGB(r=round(a.r + (b.r - a.r) * t), g=round(a.g + (b.g - a.g) * t), b=round(a.b + (b.b - a.b) * t)))
-    return out
-
-
 class MusicRequest(BaseModel):
     style: str = Field("", max_length=40, description="One of the light's music styles; empty = the first one")
     sensitivity: int = Field(80, ge=0, le=100)
@@ -367,14 +355,9 @@ async def get_segments(device_id: str, devices: Devices) -> dict[str, int]:
 
 @api.post("/devices/{device_id}/segments", tags=["devices"])
 async def set_segments(device_id: str, body: SegmentsRequest, devices: Devices, source: Source) -> DeviceRuntime:
-    count = devices.segment_count(device_id)
     if body.mode == "exact":
-        colors = body.colors
-    elif body.mode == "per_bar" and count == 12:
-        colors = blend(body.colors, 6) * 2
-    else:
-        colors = blend(body.colors, max(count, 1))
-    return await devices.set_segments(device_id, colors, source=source)
+        return await devices.set_segments(device_id, body.colors, source=source)
+    return await devices.apply_gradient(device_id, body.colors, per_bar=body.mode == "per_bar", source=source)
 
 
 @api.get("/effects", tags=["devices"])
@@ -396,6 +379,15 @@ async def stop_effects(body: EffectStop, request: Request, source: Source) -> li
     service = request.app.state.effect_service
     await service.stop(body.device_ids, source=source)
     return service.running()
+
+
+@api.get("/weather", tags=["automations"])
+async def weather(request: Request) -> WeatherReport | None:
+    """Current weather and the next days for the location in Settings (null without a location)."""
+    try:
+        return await request.app.state.weather_service.report()
+    except Exception:
+        return None
 
 
 @api.get("/settings/presence", tags=["automations"])

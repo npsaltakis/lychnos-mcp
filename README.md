@@ -92,6 +92,11 @@ The name is also an acronym of what the project is:
   sensitivity. One button starts and stops it. The LAN API and plain Bluetooth packets do not switch music mode on
   (both tested on the H6056), so it uses Govee's official cloud API with a free API key and needs internet;
   everything else stays local. Verified on hardware.
+- **Weather** on the home page (Open-Meteo, free, no key): now, today's high/low, feels-like, rain chance, wind,
+  sunset and the next two days, for the location in Settings. Sunset automations can run 15–60 minutes earlier
+  when the forecast is cloudy.
+- **Scenes with extras**: besides on/off, colour, white and brightness, a light in a scene can get a gradient
+  (RGBIC lights), an effect or music mode, e.g. a *Party* scene with the bars in music mode.
 - **Light effects**: rainbow, breathe and candle, run by Lychnos itself so they work on any colour light. An
   effect stops when you stop it or give that light any other command.
 - **Presence**: knows whether anyone is home from the phones on the home Wi-Fi (MAC address from the computer's
@@ -600,6 +605,7 @@ cd frontend;    npm run dev      # http://127.0.0.1:5173
 - [x] Presence (phones on Wi-Fi), vacation mode, sleep light, light effects, usage statistics, daily backups,
   Telegram commands
 - [x] Govee RGBIC segment gradients (LAN) and music mode (cloud API), verified on the H6056
+- [x] Weather card, cloudy-earlier sunset automations, scenes with gradient / effect / music
 - [x] WiZ and Shelly providers (awaiting hardware verification)
 - [ ] Move the hub to an always-on board (Arduino UNO Q): headless keyring fallback, LAN binding, linger for the
   systemd service
