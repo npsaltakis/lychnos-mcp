@@ -18,6 +18,7 @@ import json
 import logging
 import re
 import socket
+import subprocess
 import sys
 from datetime import datetime, timedelta
 from typing import Literal, Protocol
@@ -39,6 +40,8 @@ SOURCE = "presence"
 TICK_S = 60.0
 SWEEP_EVERY = timedelta(minutes=10)
 _MAC_RE = re.compile(r"^([0-9a-f]{2}:){5}[0-9a-f]{2}$")
+# Windows: run powershell/ping without flashing a console window every minute.
+_NO_WINDOW: dict = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
 PRESENT_STATES = {"reachable"}  # "probe"/"delay" only mean the PC is still asking
 
 
@@ -110,7 +113,7 @@ class SystemScanner:
             cmd = ["ping", "-c", "2", "-W", "2", ip]
         try:
             proc = await asyncio.create_subprocess_exec(
-                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL, **_NO_WINDOW
             )
             out, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
         except (OSError, TimeoutError):
@@ -141,7 +144,7 @@ class SystemScanner:
         else:
             cmd = ["ip", "-j", "-4", "neigh"]
         proc = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL, **_NO_WINDOW
         )
         out, _ = await asyncio.wait_for(proc.communicate(), timeout=15)
         data = json.loads(out.decode(errors="replace") or "[]")

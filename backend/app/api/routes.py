@@ -340,6 +340,16 @@ class MusicRequest(BaseModel):
     sensitivity: int = Field(80, ge=0, le=100)
 
 
+@api.get("/devices/{device_id}/music", tags=["devices"])
+async def music_status(device_id: str, devices: Devices) -> dict[str, bool]:
+    return {"on": devices.music_on(device_id)}
+
+
+@api.post("/devices/{device_id}/music/stop", tags=["devices"])
+async def stop_music(device_id: str, devices: Devices, source: Source) -> DeviceRuntime:
+    return await devices.stop_music(device_id, source=source)
+
+
 @api.get("/devices/{device_id}/music/styles", tags=["devices"])
 async def music_styles(device_id: str, devices: Devices) -> list[str]:
     return await devices.music_styles(device_id)

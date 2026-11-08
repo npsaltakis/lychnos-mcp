@@ -137,6 +137,9 @@ class DeviceService:
         store.listeners.append(self._on_state_change)
         # Called with (device_id, source) before every command (effects use it to stop themselves).
         self.command_listeners: list[Callable[[str, str], None]] = []
+        # Lights in music mode; any other command takes them out of it.
+        self._music_on: set[str] = set()
+        self.command_listeners.append(lambda device_id, _source: self._music_on.discard(device_id))
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -413,6 +416,24 @@ class DeviceService:
         results = await asyncio.gather(*(self._execute_validated(d, command, source) for d in targets))
         return BatchResult.build(list(results), skipped)
 
+    def music_on(self, device_id: str) -> bool:
+        return device_id in self._music_on
+
+    async def stop_music(self, device_id: str, *, source: str = "api") -> DeviceRuntime:
+        """Leave music mode by re-sending the light's last colour (any LAN command ends it)."""
+        device = self._require_registered(device_id)
+        state = self._store.get(device.id).state
+        command: Command
+        if state.mode is LightMode.WHITE and state.color_temp_k:
+            command = SetColorTemperature(kelvin=state.color_temp_k)
+        elif state.color is not None:
+            command = SetColor(color=state.color)
+        else:
+            command = SetPower(on=True)
+        await self.execute(device_id, command, source=source)
+        self._music_on.discard(device.id)
+        return self._store.get(device.id)
+
     async def music_styles(self, device_id: str) -> list[str]:
         device = self._require_registered(device_id)
         provider = self._providers.get(device.provider)
@@ -431,6 +452,7 @@ class DeviceService:
         if self._store.get(device.id).state.power is not True:
             await self._execute_validated(device, SetPower(on=True), source)
         await provider.set_music(device, style, sensitivity)
+        self._music_on.add(device.id)
         if self._activity is not None:
             await self._activity.add(
                 ts=utcnow(), source=source, device_id=device.id, device_name=device.name,

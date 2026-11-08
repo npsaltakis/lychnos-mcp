@@ -118,6 +118,12 @@ function MusicMode({ deviceId }: { deviceId: string }) {
   const tr = useT();
   const [styles, setStyles] = useState<MusicStyle[] | null>(null);
   const [style, setStyle] = useState<MusicStyle>("");
+  const [on, setOn] = useState(false);
+  // Any other command (from here, Claude, a scene…) ends music mode: re-check after each result.
+  const lastResult = useDevices((s) => s.lastResult[deviceId]);
+  useEffect(() => {
+    api.musicStatus(deviceId).then((r) => setOn(r.on)).catch(() => undefined);
+  }, [deviceId, lastResult]);
   const [sensitivity, setSensitivity] = useState(80);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -129,10 +135,16 @@ function MusicMode({ deviceId }: { deviceId: string }) {
       })
       .catch(() => setStyles([]));
   }, [deviceId]);
-  const start = async (s = style, level = sensitivity) => {
+  const toggle = async () => {
     setBusy(true);
     try {
-      await api.setMusic(deviceId, s, level);
+      if (on) {
+        await api.stopMusic(deviceId);
+        setOn(false);
+      } else {
+        await api.setMusic(deviceId, style, sensitivity);
+        setOn(true);
+      }
     } catch (err) {
       reportError(null, err);
     } finally {
@@ -155,8 +167,17 @@ function MusicMode({ deviceId }: { deviceId: string }) {
             </option>
           ))}
         </select>
-        <button type="button" onClick={() => void start()} className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-accent px-4 text-sm font-medium text-black pointer-coarse:min-h-11">
-          <Music className="size-4" aria-hidden /> {tr("music.start")}
+        <button
+          type="button"
+          aria-pressed={on}
+          onClick={() => void toggle()}
+          className={cx(
+            "inline-flex min-h-9 items-center gap-1.5 rounded-full px-4 text-sm font-medium pointer-coarse:min-h-11",
+            on ? "border border-accent bg-accent/15 text-accent" : "bg-accent text-black",
+          )}
+        >
+          {on ? <Square className="size-3.5" aria-hidden /> : <Music className="size-4" aria-hidden />}
+          {tr(on ? "music.stop" : "music.start")}
         </button>
       </div>
       <Slider label={tr("music.sensitivity")} min={0} max={100} value={sensitivity} onCommit={setSensitivity} format={(v) => `${v}%`} />

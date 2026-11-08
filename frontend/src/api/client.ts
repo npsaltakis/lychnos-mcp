@@ -109,6 +109,8 @@ export const api = {
   runAutomation: (id: string) => request<Automation>("POST", `/automations/${id}/run`),
   location: () => request<Location | null>("GET", "/settings/location"),
   setLocation: (loc: Location) => request<Location>("PUT", "/settings/location", loc),
+  musicStatus: (id: string) => request<{ on: boolean }>("GET", `/devices/${encodeURIComponent(id)}/music`),
+  stopMusic: (id: string) => request<DeviceRuntime>("POST", `/devices/${encodeURIComponent(id)}/music/stop`),
   musicStyles: (id: string) => request<string[]>("GET", `/devices/${encodeURIComponent(id)}/music/styles`),
   setMusic: (id: string, style: MusicStyle, sensitivity: number) =>
     request<DeviceRuntime>("POST", `/devices/${encodeURIComponent(id)}/music`, { style, sensitivity }),
