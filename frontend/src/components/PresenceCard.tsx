@@ -110,7 +110,8 @@ export function PresenceCard() {
             <div key={i} className="flex flex-wrap items-center gap-2">
               <input className={cx(input, "w-36 flex-none")} aria-label={tr("pres.name")} value={p.name} maxLength={40} onChange={(e) => setPerson(i, { name: e.target.value })} />
               <input className={cx(input, "w-48 flex-1 font-mono")} aria-label="MAC" placeholder="aa:bb:cc:dd:ee:ff" value={p.mac} onChange={(e) => setPerson(i, { mac: e.target.value.trim() })} />
-              {st && (
+              {st && status?.anyone_home === null && form.enabled && <span className="text-xs text-muted">{tr("pres.checking")}</span>}
+              {st && status?.anyone_home !== null && (
                 <span className={cx("text-xs", st.home ? "text-emerald-400" : "text-muted")}>
                   {st.home ? tr("pres.home") : tr("pres.away")}
                   {st.since && ` · ${tr("pres.since", { when: sinceLabel(st.since) })}`}

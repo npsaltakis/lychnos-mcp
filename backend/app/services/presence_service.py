@@ -247,8 +247,11 @@ class PresenceService:
     # ------------------------------------------------------------------ loop
 
     async def _loop(self) -> None:
+        first = True
         while True:
-            await asyncio.sleep(self._tick_s)
+            # First check soon after start, so the status is not "unknown" for a whole minute
+            await asyncio.sleep(min(5.0, self._tick_s) if first else self._tick_s)
+            first = False
             if not self._settings.enabled or not self._settings.people:
                 continue
             try:
