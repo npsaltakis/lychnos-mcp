@@ -26,6 +26,7 @@ class NtfyConfig(BaseModel):
 class TelegramConfig(BaseModel):
     enabled: bool = False
     chat_id: str = Field("", max_length=32, pattern=r"^-?\d*$")
+    commands: bool = Field(False, description="Also accept commands from this chat")
 
 
 class EmailConfig(BaseModel):

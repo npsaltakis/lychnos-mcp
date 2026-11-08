@@ -17,6 +17,7 @@ from typing import Any
 from app.core.config import Settings
 from app.core.errors import DeviceOfflineError, DeviceTimeoutError, ProviderError
 from app.domain.models import (
+    RGB,
     Command,
     DeviceRecord,
     DeviceState,
@@ -58,6 +59,7 @@ class GoveeLanProvider(DeviceProvider):
     def __init__(self, settings: Settings, local_ip: str | None = None) -> None:
         self._settings = settings
         self._local_ip = local_ip or settings.lan_interface_ip
+        self._cloud: Any = None  # GoveeCloud, created on first use (music mode only)
         self._transport: asyncio.DatagramTransport | None = None
         self._status_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
         self._scan_results: dict[str, dict[str, Any]] | None = None
@@ -158,6 +160,8 @@ class GoveeLanProvider(DeviceProvider):
                         "wifi_hardware": data.get("wifiVersionHard"),
                         "ble_firmware": data.get("bleVersionSoft"),
                         "ble_hardware": data.get("bleVersionHard"),
+                        "segments": protocol.KNOWN_SEGMENTS.get(sku or "", 0),
+                        "music": (sku or "") in protocol.MUSIC_MODELS,
                     },
                 )
             )
@@ -189,6 +193,32 @@ class GoveeLanProvider(DeviceProvider):
                     details={"device_id": device.id, "address": ip},
                 )
             return state
+
+    def segment_count(self, device: DeviceRecord) -> int:
+        return protocol.KNOWN_SEGMENTS.get(device.model or "", 0)
+
+    def supports_music(self, device: DeviceRecord) -> bool:
+        return (device.model or "") in protocol.MUSIC_MODELS
+
+    def _cloud_client(self) -> Any:
+        if self._cloud is None:
+            from app.core.secrets import KeyringSecretStore
+            from app.providers.govee_lan.cloud import GoveeCloud
+
+            self._cloud = GoveeCloud(KeyringSecretStore())
+        return self._cloud
+
+    async def music_styles(self, device: DeviceRecord) -> list[str]:
+        return await self._cloud_client().music_styles(device.native_id)
+
+    async def set_music(self, device: DeviceRecord, style: str, sensitivity: int) -> None:
+        await self._cloud_client().set_music(device.model or "", device.native_id, style, sensitivity)
+
+    async def set_segments(self, device: DeviceRecord, colors: list[RGB]) -> None:
+        ip = self._require_address(device)
+        transport = self._require_transport()
+        async with self._lock(ip):
+            transport.sendto(protocol.segments_request(colors), (ip, protocol.CONTROL_PORT))
 
     # ------------------------------------------------------------------ helpers
 

@@ -83,7 +83,26 @@ The name is also an acronym of what the project is:
 - **Automations**: run at a time of day or at sunrise/sunset (± minutes, using your location), on chosen
   weekdays. Actions: activate a scene, switch/colour/dim a light, a room or all lights, or a gradual
   **wake-up light** that fades in over N minutes and stops if you switch the light off. Runs missed while the
-  backend was off are skipped, never replayed.
+  backend was off are skipped, never replayed. A **sleep light** does the opposite: it dims the lights that are
+  on from their current brightness and switches them off over N minutes.
+- **Govee RGBIC segments**: gradients along the light (presets or two colours, optionally the same on each bar),
+  sent locally. Verified on the H6056 light bars (2 bars × 6 segments).
+- **Govee music mode** (optional, cloud): the light follows the sound with its own microphone, in the styles the
+  light offers. The LAN API cannot do this, so it uses Govee's official cloud API with a free API key; everything
+  else stays local.
+- **Light effects**: rainbow, breathe and candle, run by Lychnos itself so they work on any colour light. An
+  effect stops when you stop it or give that light any other command.
+- **Presence**: knows whether anyone is home from the phones on the home Wi-Fi (MAC address, read from the
+  computer's neighbour table; no app on the phone). When everyone leaves it can switch everything off; when
+  someone arrives it can switch the lights on or run a scene, optionally only after dark.
+- **Vacation mode**: every evening, from sunset (or a set time) to a set end time, lights go on and off at
+  random so the home looks lived in; at the end it switches off whatever it lit.
+- **Usage statistics**: hours on per light per day (7 or 30 days), counted from every change, including
+  Google Home and wall switches.
+- **Daily backups** of the database (devices, rooms, scenes, automations, log), keeping the last 14, plus a
+  *Back up now* button. Secrets are not in the database.
+- **Telegram commands** (optional): write to your bot “on”, “off living room”, “40%”, “scene movie”, “status” or
+  “menu” for buttons. It only obeys your own chat id and uses long polling, so nothing is exposed to the internet.
 - **Log**: every switch-on, switch-off, brightness and colour change with its time, who made it (dashboard,
   Claude, a scene, an automation, or an *external* change from Google Home, the vendor app or a wall switch) and
   whether the device confirmed it, plus when a light went offline and came back. Filter by device or type and
@@ -111,7 +130,7 @@ The name is also an acronym of what the project is:
 - **MCP server** (official Python SDK, stdio) with tools: `list_devices`, `list_rooms`, `get_device_state`,
   `turn_on`, `turn_off`, `set_brightness`, `set_color`, `set_color_temperature`, `list_scenes`,
   `activate_scene`, `create_scene`, `list_automations`, `create_automation`, `set_automation_enabled`,
-  `delete_automation`. Device, room and colour names (English and Greek) are resolved for you.
+  `delete_automation`, `start_effect`, `stop_effects`, `set_gradient`, `music_mode`. Automations include `wake_up_fade` and `sleep_fade`. Device, room and colour names (English and Greek) are resolved for you.
 - **Security**: password login, HttpOnly/SameSite=Strict sessions, brute-force lockout, CSRF and DNS
   rebinding protection, API bound to `127.0.0.1`, secrets kept outside the repository.
 - **Extensible**: a provider/adapter interface; adding a brand does not touch the core, the dashboard or MCP.
@@ -124,6 +143,8 @@ Support is **per protocol**, not per individual device. Any device that speaks a
 |---|---|---|---|---|---|
 | `govee_lan` | [Govee LAN API](https://app-h5.govee.com/user-manual/wlan-guide) (UDP) | ~250 Govee light models (strips, bars, bulbs, lamps). Check the official list. | ✅ | "LAN Control" enabled per device in the Govee Home app | ✅ Verified on hardware (H6056) |
 | `ewelink_lan` | eWeLink LAN (mDNS + encrypted HTTP) | Sonoff / eWeLink devices on stock firmware. Currently: RGB+CCT bulbs (UIID 104, e.g. **B05-BL**) | ✅ (after a one-time key fetch) | Free [eWeLink developer](https://dev.ewelink.cc) app to fetch device keys once | ✅ Implemented and unit-tested |
+| `wiz_lan` | WiZ local UDP (JSON on port 38899, broadcast discovery) | **WiZ / Philips WiZ** bulbs, strips and plugs. RGB, tunable-white, dimmable and socket models are told apart by module name. | ✅ No keys, no cloud | "Allow local communication" on in the WiZ app (default) | ✅ Implemented and tested against a simulated light; not yet hardware-verified |
+| `shelly_lan` | Shelly local HTTP (Gen1 `/relay/0`, Gen2+ RPC `Switch.*`) | **Shelly** relays and plugs (Shelly 1, Plug S, Plus 1, Plus Plug, Pro, Gen3 …): on/off | ✅ No keys, no cloud | No password on the device (restricted login off) | ✅ Implemented and tested against simulated Gen1 and Gen2 devices; not yet hardware-verified |
 | `yeelight_lan` | [Yeelight LAN protocol](https://www.yeelight.com/download/Yeelight_Inter-Operation_Spec.pdf) (SSDP discovery on UDP 1982, TCP 55443, push notifications) | **Xiaomi / Yeelight** lights: colour and white bulbs, light strips, ceiling, bedside and desk lamps. Capabilities and colour-temperature range are detected from what each light reports. | ✅ No keys, no cloud | "LAN Control" enabled per light in the **Yeelight** app | ✅ Implemented and tested against a simulated bulb (spec-conformant); not yet hardware-verified |
 
 ### Xiaomi lights
@@ -239,6 +260,8 @@ to control. Only registered devices accept commands, from the dashboard and from
 ### Device preparation
 
 - **Govee**: Govee Home app → device → Settings → enable **LAN Control**.
+  For music mode (optional): Govee Home app → Profile → Settings → **Apply for API Key**, then store it in the
+  OS keyring with `python -m app.integrations.govee_key` (from `backend/`).
 - **Xiaomi / Yeelight**: Yeelight app → light → enable **LAN Control**.
 - **Sonoff (eWeLink)**: LAN commands are encrypted with a per-device key that only eWeLink provides. Fetch it once:
   1. Register at https://dev.ewelink.cc (free developer certification) and create an app with redirect URL
@@ -453,7 +476,7 @@ All settings are environment variables with the `SHC_` prefix (or `backend/.env`
 | Variable | Default | Meaning |
 |---|---|---|
 | `SHC_HOST` / `SHC_PORT` | `127.0.0.1` / `3000` | Bind address |
-| `SHC_ENABLED_PROVIDERS` | `[]` | e.g. `["govee_lan","ewelink_lan","yeelight_lan"]` |
+| `SHC_ENABLED_PROVIDERS` | `[]` | e.g. `["govee_lan","ewelink_lan","yeelight_lan","wiz_lan","shelly_lan"]` |
 | `SHC_LAN_INTERFACE_IP` | auto | PC LAN IPv4 for multicast discovery |
 | `SHC_POLL_INTERVAL_S` | `30` | State refresh for non-push devices |
 | `SHC_POLL_ALWAYS` | `true` | Keep refreshing even with no dashboard open, so external changes reach the log. `false` = only while someone is watching |
@@ -475,7 +498,10 @@ backend/                 FastAPI backend (Python 3.11+)
     govee_lan/           Govee LAN API
     ewelink_lan/         Sonoff/eWeLink LAN
     yeelight_lan/        Xiaomi/Yeelight LAN
-  app/services/          DeviceService, SceneService, StateStore, EventBus, AuthService
+    wiz_lan/             WiZ LAN (UDP)
+    shelly_lan/          Shelly LAN (HTTP)
+  app/services/          DeviceService, SceneService, StateStore, EventBus, AuthService, automations,
+                         presence, vacation, effects, usage, backups, Telegram bot, notifications
   app/persistence/       SQLite + migrations
   app/integrations/      one-time cloud helpers (eWeLink key setup)
   tests/                 pytest (fake provider lives only here)
@@ -535,7 +561,10 @@ cd frontend;    npm run dev      # http://127.0.0.1:5173
 - [x] Rooms, automations (time, sunrise/sunset, wake-up light) and command history
 - [x] Notifications: ntfy, Telegram, email, browser push (all optional, off by default)
 - [x] Change log (including external changes) with CSV export; Greek/English interface
-- [ ] Sensor- and presence-based automations (needs sensors)
+- [x] Presence (phones on Wi-Fi), vacation mode, sleep light, light effects, usage statistics, daily backups,
+  Telegram commands
+- [x] WiZ and Shelly providers (awaiting hardware verification)
+- [ ] Sensor-based automations (needs sensors, e.g. on an Arduino UNO Q)
 - [ ] More providers: Matter, …
 
 ## License

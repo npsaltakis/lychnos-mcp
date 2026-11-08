@@ -318,6 +318,18 @@ export function NotificationsCard() {
               </Field>
             )}
           </div>
+          <label className="mt-3 flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-4 accent-amber-400"
+              checked={form.telegram.commands}
+              onChange={(e) => set("telegram", { commands: e.target.checked })}
+            />
+            <span>
+              {tr("ntf.tgCommands")}
+              <span className="block text-muted">{tr("ntf.tgCommandsHint")}</span>
+            </span>
+          </label>
         </Channel>
 
         <Channel

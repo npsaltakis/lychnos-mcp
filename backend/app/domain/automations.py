@@ -88,7 +88,17 @@ class FadeActionSpec(BaseModel):
     color_temp_k: int | None = Field(None, ge=1000, le=12000, description="Optional white tone to use")
 
 
-Action = Annotated[SceneActionSpec | CommandActionSpec | FadeActionSpec, Field(discriminator="type")]
+class FadeOutActionSpec(BaseModel):
+    """Sleep light: lower the brightness step by step from where it is, then switch off."""
+
+    type: Literal["fade_out"] = "fade_out"
+    target: Target
+    duration_min: int = Field(15, ge=1, le=120)
+
+
+Action = Annotated[
+    SceneActionSpec | CommandActionSpec | FadeActionSpec | FadeOutActionSpec, Field(discriminator="type")
+]
 
 
 class AutomationInput(BaseModel):

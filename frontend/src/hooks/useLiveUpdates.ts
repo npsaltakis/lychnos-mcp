@@ -23,6 +23,10 @@ export function useLiveUpdates(): void {
       switch (event.type) {
         case "snapshot":
           s.setSnapshot(event.data.devices);
+          api.effects().then(s.setEffects).catch(() => undefined);
+          break;
+        case "effects_changed":
+          s.setEffects(event.data.running);
           break;
         case "device_runtime":
           s.setRuntime(event.data.device_id, event.data.runtime);

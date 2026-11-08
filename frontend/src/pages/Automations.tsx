@@ -13,7 +13,7 @@ import { sortedViews, useDevices } from "../store/devices";
 import { notify } from "../store/toasts";
 
 type When = "time" | "sunrise" | "sunset";
-type Kind = "scene" | "on" | "off" | "color" | "brightness" | "white" | "fade";
+type Kind = "scene" | "on" | "off" | "color" | "brightness" | "white" | "fade" | "fadeOut";
 
 interface Form {
   name: string;
@@ -31,7 +31,7 @@ interface Form {
   fadeWhite: boolean;
 }
 
-const KINDS: Kind[] = ["scene", "on", "off", "color", "brightness", "white", "fade"];
+const KINDS: Kind[] = ["scene", "on", "off", "color", "brightness", "white", "fade", "fadeOut"];
 
 const EMPTY: Form = {
   name: "",
@@ -77,6 +77,10 @@ function fromAutomation(a: Automation): Form {
     f.fadeMinutes = act.duration_min;
     f.fadeWhite = act.color_temp_k !== null;
     if (act.color_temp_k) f.kelvin = act.color_temp_k;
+  } else if (act.type === "fade_out") {
+    f.kind = "fadeOut";
+    f.target = targetToString(act.target);
+    f.fadeMinutes = act.duration_min;
   } else {
     f.target = targetToString(act.target);
     const c = act.command;
@@ -105,6 +109,7 @@ function toInput(f: Form, enabled: boolean): AutomationInput {
   if (f.kind === "scene") action = { type: "scene", scene_id: f.sceneId };
   else if (f.kind === "fade")
     action = { type: "fade", target, to_brightness: f.brightness, duration_min: f.fadeMinutes, color_temp_k: f.fadeWhite ? f.kelvin : null };
+  else if (f.kind === "fadeOut") action = { type: "fade_out", target, duration_min: f.fadeMinutes };
   else {
     const command: Command =
       f.kind === "on" || f.kind === "off"
@@ -266,14 +271,17 @@ function Editor({ initial, location, onDone }: { initial: Automation | null; loc
             <input type="range" className="slider" min={f.kind === "fade" ? 2 : 1} max={100} value={f.brightness} onChange={(e) => set({ brightness: Number(e.target.value) })} />
           </label>
         )}
+        {(f.kind === "fade" || f.kind === "fadeOut") && (
+          <label className="block text-sm">
+            <span className="mb-1 flex justify-between text-muted">
+              {tr("auto.duration")} <span className="tabular-nums text-gray-200">{tr("auto.minutes", { n: f.fadeMinutes })}</span>
+            </span>
+            <input type="range" className="slider" min={1} max={60} value={f.fadeMinutes} onChange={(e) => set({ fadeMinutes: Number(e.target.value) })} />
+          </label>
+        )}
+        {f.kind === "fadeOut" && <p className="text-sm text-muted">{tr("auto.fadeOutHint")}</p>}
         {f.kind === "fade" && (
           <>
-            <label className="block text-sm">
-              <span className="mb-1 flex justify-between text-muted">
-                {tr("auto.duration")} <span className="tabular-nums text-gray-200">{tr("auto.minutes", { n: f.fadeMinutes })}</span>
-              </span>
-              <input type="range" className="slider" min={1} max={60} value={f.fadeMinutes} onChange={(e) => set({ fadeMinutes: Number(e.target.value) })} />
-            </label>
             <label className="inline-flex items-center gap-2 text-sm">
               <input type="checkbox" className="size-4 accent-amber-400" checked={f.fadeWhite} onChange={(e) => set({ fadeWhite: e.target.checked })} />
               {tr("auto.inWhite")} {f.fadeWhite && `${f.kelvin} K`}
@@ -315,6 +323,7 @@ function describe(a: Automation, names: Record<string, string>, rooms: Record<st
     const target =
       tg.kind === "all" ? t("auto.desc.allLights") : tg.kind === "room" ? (rooms[tg.id!] ?? t("auto.desc.room")) : (names[tg.id!] ?? t("auto.desc.device"));
     if (act.type === "fade") what = t("auto.desc.fade", { to: act.to_brightness, min: act.duration_min, target });
+    else if (act.type === "fade_out") what = t("auto.desc.fadeOut", { min: act.duration_min, target });
     else {
       const c = act.command;
       const verb =

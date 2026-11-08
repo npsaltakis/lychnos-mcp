@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { ActivityEntry } from "../api/types";
 import { Button, Card, Empty, PageHeader, cx } from "../components/ui";
+import { UsageCard } from "../components/UsageCard";
 import { useT, type MessageKey } from "../lib/i18n";
 import { changeLabel, sourceLabel } from "../lib/labels";
 import { formatDateTime } from "../lib/time";
@@ -94,6 +95,8 @@ export function History() {
           </Button>
         }
       />
+
+      <UsageCard />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div

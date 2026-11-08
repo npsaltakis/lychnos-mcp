@@ -18,6 +18,7 @@ from app.domain.automations import (
     AutomationInput,
     CommandActionSpec,
     FadeActionSpec,
+    FadeOutActionSpec,
     Location,
     SceneActionSpec,
     SunTrigger,
@@ -190,7 +191,7 @@ class AutomationService:
         if automation_id in self._running:
             raise InvalidCommandError(f"{automation.name} is already running")
         task = self._spawn(automation, reason="manual")
-        if wait and not isinstance(automation.action, FadeActionSpec):
+        if wait and not isinstance(automation.action, (FadeActionSpec, FadeOutActionSpec)):
             await asyncio.shield(task)
         return self.get(automation_id)
 
@@ -240,6 +241,8 @@ class AutomationService:
                 result = summarize(await self._scenes.activate(action.scene_id, source=source))
             elif isinstance(action, CommandActionSpec):
                 result = await self._run_command(action.target, action.command, source)
+            elif isinstance(action, FadeOutActionSpec):
+                result = await self._run_fade_out(action, source)
             else:
                 result = await self._run_fade(action, source)
         except AppError as error:
@@ -300,6 +303,37 @@ class AutomationService:
             if not active:
                 return {"outcome": "partial", "message": "Stopped: the lights were switched off during the fade"}
         return {"outcome": "all_confirmed", "message": f"Faded {len(active)} light(s) to {spec.to_brightness}%"}
+
+    async def _run_fade_out(self, spec: FadeOutActionSpec, source: str) -> dict[str, Any]:
+        """Sleep light: from the current brightness down to the minimum, then off."""
+        lights = [d for d in self._target_devices(spec.target) if d.capabilities.has(Capability.BRIGHTNESS)]
+        start: dict[str, int] = {}
+        for device in lights:
+            state = self._devices.get_view(device.id).runtime.state
+            if state.power is True:
+                start[device.id] = state.brightness or 100
+        if not start:
+            return {"outcome": BatchOutcome.NOTHING_TO_DO.value, "message": "No lights are on in the target"}
+        floor = {d.id: d.capabilities.brightness_min for d in lights}
+        span = max(start[i] - floor[i] for i in start)
+        steps = max(1, min(span, int(spec.duration_min * 60 // FADE_MIN_STEP_S)))
+        interval = spec.duration_min * 60 / steps
+        active = list(start)
+        for step in range(1, steps + 1):
+            await _sleep(interval)
+            for device_id in list(active):
+                view = self._devices.get_view(device_id)
+                if view.runtime.state.power is False:  # switched off by hand: done with it
+                    active.remove(device_id)
+                    continue
+                level = max(floor[device_id], start[device_id] - round((start[device_id] - floor[device_id]) * step / steps))
+                if step < steps:
+                    await self._devices.execute(device_id, SetBrightness(brightness=level), source=source)
+            if not active:
+                return {"outcome": "all_confirmed", "message": "The lights were switched off during the fade"}
+        for device_id in active:
+            await self._devices.execute(device_id, SetPower(on=False), source=source)
+        return {"outcome": "all_confirmed", "message": f"Faded out {len(active)} light(s) over {spec.duration_min}′"}
 
     def _target_devices(self, target: Target) -> list[Any]:
         if target.kind == "device":

@@ -28,10 +28,24 @@ def _yeelight_lan(settings: Settings) -> DeviceProvider:
     return YeelightLanProvider(settings)
 
 
+def _wiz_lan(settings: Settings) -> DeviceProvider:
+    from app.providers.wiz_lan import WizLanProvider
+
+    return WizLanProvider(settings)
+
+
+def _shelly_lan(settings: Settings) -> DeviceProvider:
+    from app.providers.shelly_lan import ShellyLanProvider
+
+    return ShellyLanProvider(settings)
+
+
 BUILTIN_PROVIDERS: dict[str, ProviderFactory] = {
     "govee_lan": _govee_lan,
     "ewelink_lan": _ewelink_lan,
     "yeelight_lan": _yeelight_lan,
+    "wiz_lan": _wiz_lan,
+    "shelly_lan": _shelly_lan,
 }
 
 

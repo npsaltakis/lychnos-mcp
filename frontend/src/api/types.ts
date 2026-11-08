@@ -137,7 +137,8 @@ export interface Target {
 export type AutomationAction =
   | { type: "scene"; scene_id: string }
   | { type: "command"; target: Target; command: Command }
-  | { type: "fade"; target: Target; to_brightness: number; duration_min: number; color_temp_k: number | null };
+  | { type: "fade"; target: Target; to_brightness: number; duration_min: number; color_temp_k: number | null }
+  | { type: "fade_out"; target: Target; duration_min: number };
 
 export interface AutomationInput {
   name: string;
@@ -151,6 +152,55 @@ export interface Automation extends AutomationInput {
   last_run_at: string | null;
   last_result: { outcome: string; message: string; at: string } | null;
   next_run_at: string | null;
+}
+
+export interface PresenceSettings {
+  enabled: boolean;
+  people: { name: string; mac: string }[];
+  away_after_min: number;
+  on_leave: "nothing" | "all_off";
+  on_arrive: "nothing" | "all_on" | "scene";
+  arrive_scene_id: string | null;
+  arrive_only_dark: boolean;
+}
+
+export interface PresenceStatus {
+  settings: PresenceSettings;
+  anyone_home: boolean | null;
+  people: { name: string; mac: string; home: boolean; last_seen: string | null; ip: string | null }[];
+}
+
+export interface Neighbor {
+  ip: string;
+  mac: string;
+  state: string;
+}
+
+export interface UsageReport {
+  days: string[];
+  devices: { device_id: string; name: string; hours: number[]; total_hours: number }[];
+}
+
+export interface BackupFile {
+  name: string;
+  size_bytes: number;
+  created_at: string;
+}
+
+export interface VacationSettings {
+  enabled: boolean;
+  start: "sunset" | "time";
+  start_time: string;
+  end_time: string;
+  device_ids: string[];
+}
+
+export interface VacationStatus {
+  settings: VacationSettings;
+  active: boolean;
+  window_start: string | null;
+  window_end: string | null;
+  lights_on: string[];
 }
 
 export interface Location {
@@ -172,7 +222,7 @@ export interface ActivityEntry {
 
 export interface NotificationSettings {
   ntfy: { enabled: boolean; server: string; topic: string };
-  telegram: { enabled: boolean; chat_id: string };
+  telegram: { enabled: boolean; chat_id: string; commands: boolean };
   email: {
     enabled: boolean;
     smtp_host: string;
@@ -210,4 +260,14 @@ export type LiveEvent =
   | { type: "automations_changed"; data: Record<string, never>; ts: string }
   | { type: "activity_added"; data: Record<string, never>; ts: string }
   | { type: "notification"; data: { level: string; message: string }; ts: string }
+  | { type: "effects_changed"; data: { running: RunningEffect[] }; ts: string }
   | { type: "resync_required"; data: Record<string, never>; ts: string };
+
+export type EffectName = "rainbow" | "breathe" | "candle";
+export type MusicStyle = string;
+
+export interface RunningEffect {
+  effect: EffectName;
+  device_ids: string[];
+  started_at: string;
+}

@@ -11,7 +11,7 @@ import logging
 import time
 import uuid
 from collections.abc import Coroutine, Iterable
-from typing import Any
+from typing import Any, Callable
 
 from app.core.config import Settings
 from app.core.errors import (
@@ -25,6 +25,7 @@ from app.core.errors import (
 )
 from app.domain.models import (
     REQUIRED_CAPABILITY,
+    RGB,
     BatchResult,
     Command,
     CommandOutcome,
@@ -62,6 +63,7 @@ UNSET: object = object()  # "argument not given" marker (None is a meaningful va
 
 # A state change within this many seconds of our own matching command is attributed to it.
 COMMAND_ATTRIBUTION_S = 20.0
+QUIET_SOURCES = {"effect"}  # many small steps: not written to the change log
 
 
 def explained_fields(command: Command) -> set[str]:
@@ -133,6 +135,8 @@ class DeviceService:
         # (Google Home, the vendor app, a wall switch).
         self._recent_commands: dict[str, list[tuple[Command, float]]] = {}
         store.listeners.append(self._on_state_change)
+        # Called with (device_id, source) before every command (effects use it to stop themselves).
+        self.command_listeners: list[Callable[[str, str], None]] = []
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -409,11 +413,68 @@ class DeviceService:
         results = await asyncio.gather(*(self._execute_validated(d, command, source) for d in targets))
         return BatchResult.build(list(results), skipped)
 
+    async def music_styles(self, device_id: str) -> list[str]:
+        device = self._require_registered(device_id)
+        provider = self._providers.get(device.provider)
+        if not provider.supports_music(device):
+            return []
+        return await provider.music_styles(device)
+
+    async def set_music(self, device_id: str, style: str, sensitivity: int, *, source: str = "api") -> DeviceRuntime:
+        """Let the light follow sound with its own microphone (until it gets another command)."""
+        device = self._require_registered(device_id)
+        provider = self._providers.get(device.provider)
+        if not provider.supports_music(device):
+            raise InvalidCommandError(f"{device.name} has no music mode")
+        for listener in self.command_listeners:
+            listener(device.id, source)
+        if self._store.get(device.id).state.power is not True:
+            await self._execute_validated(device, SetPower(on=True), source)
+        await provider.set_music(device, style, sensitivity)
+        if self._activity is not None:
+            await self._activity.add(
+                ts=utcnow(), source=source, device_id=device.id, device_name=device.name,
+                command=f"music {style}", outcome="unconfirmed",
+            )
+            self._bus.publish(EventType.ACTIVITY_ADDED)
+        return self._store.get(device.id)
+
+    def segment_count(self, device_id: str) -> int:
+        device = self.get_device(device_id)
+        return self._providers.get(device.provider).segment_count(device)
+
+    async def set_segments(self, device_id: str, colors: list[RGB], *, source: str = "api") -> DeviceRuntime:
+        """Colour each segment of an RGBIC light. Sent once; the light cannot confirm it."""
+        device = self._require_registered(device_id)
+        count = self.segment_count(device_id)
+        if count == 0:
+            raise InvalidCommandError(f"{device.name} has no colour segments")
+        if len(colors) != count:
+            raise InvalidCommandError(f"{device.name} has {count} segments; got {len(colors)} colours")
+        for listener in self.command_listeners:
+            listener(device.id, source)
+        provider = self._providers.get(device.provider)
+        await provider.set_segments(device, colors)
+        await asyncio.sleep(0.5)
+        runtime = await self.refresh_state(device_id, force=True)
+        if self._activity is not None:
+            await self._activity.add(
+                ts=utcnow(), source=source, device_id=device.id, device_name=device.name,
+                command="segments " + " ".join(c.to_hex() for c in colors), outcome="unconfirmed",
+            )
+            self._bus.publish(EventType.ACTIVITY_ADDED)
+        return runtime
+
     def devices_in(self, room_id: str | None) -> list[DeviceRecord]:
         """Registered devices of a room (or all registered devices when room_id is None)."""
         return [d for d in self._registered() if room_id is None or d.room_id == room_id]
 
     async def _execute_validated(self, device: DeviceRecord, command: Command, source: str = "api") -> CommandResult:
+        for listener in self.command_listeners:
+            try:
+                listener(device.id, source)
+            except Exception:
+                log.exception("command listener failed")
         lock = self._locks.setdefault(device.id, asyncio.Lock())
         async with lock:
             command_id = uuid.uuid4().hex[:12]
@@ -480,7 +541,7 @@ class DeviceService:
             },
         )
         self._bus.publish(EventType.COMMAND_RESULT, result.model_dump(mode="json"))
-        if self._activity is not None:
+        if self._activity is not None and source not in QUIET_SOURCES:
             try:
                 await self._activity.add(
                     ts=utcnow(),

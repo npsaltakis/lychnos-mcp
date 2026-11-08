@@ -276,6 +276,90 @@ async def set_color(device: str, color: str) -> dict[str, Any]:
 
 
 @mcp.tool(annotations=CONTROL)
+async def start_effect(
+    effect: Literal["rainbow", "breathe", "candle"], device: str = "all"
+) -> dict[str, Any]:
+    """Start a light effect that keeps running until stopped or the light gets another command.
+
+    Args:
+        effect: "rainbow" (colour slowly cycles), "breathe" (brightness rises and falls) or
+            "candle" (warm flickering flame).
+        device: Light name, room name or "all".
+    """
+    try:
+        kind, item, _views, names = await _resolve_target(device)
+        target: dict[str, Any] = {"kind": kind}
+        if kind == "room":
+            target["id"] = item["id"]  # type: ignore[index]
+        elif kind == "device":
+            target["id"] = item["device"]["id"]  # type: ignore[index]
+        run = await client().request("POST", "/effects", {"effect": effect, "target": target})
+    except BackendError as err:
+        raise _tool_error(err) from None
+    return {"effect": run["effect"], "lights": [names.get(i, i) for i in run["device_ids"]]}
+
+
+@mcp.tool(annotations=CONTROL)
+async def set_gradient(device: str, colors: list[str], same_on_each_bar: bool = True) -> dict[str, Any]:
+    """Colour an RGBIC light (e.g. the Govee light bars) segment by segment with a gradient.
+
+    Args:
+        device: The light's name (must be a single light with colour segments).
+        colors: Two or more colours blended along the light, e.g. ["orange", "purple"] or ["#ff0000", "#0000ff"].
+        same_on_each_bar: For lights made of two bars, repeat the gradient on each bar.
+    """
+    try:
+        kind, item, _views, names = await _resolve_target(device)
+        if kind != "device":
+            raise BackendError("not_a_device", "Gradients work on one light at a time; name the light")
+        rgb = [parse_color(c) for c in colors]
+        device_id = item["device"]["id"]  # type: ignore[index]
+        await client().request(
+            "POST", f"/devices/{device_id}/segments",
+            {"colors": rgb, "mode": "per_bar" if same_on_each_bar else "gradient"},
+        )
+    except BackendError as err:
+        raise _tool_error(err) from None
+    return {"light": names.get(device_id, device_id), "gradient": colors, "confirmed": False,
+            "note": "The light cannot report segment colours back"}
+
+
+@mcp.tool(annotations=CONTROL)
+async def music_mode(
+    device: str,
+    style: str = "",
+    sensitivity: int = Field(80, ge=0, le=100),
+) -> dict[str, Any]:
+    """Make a light follow the sound in the room with its own microphone (e.g. the Govee light bars).
+
+    It stays in music mode until the light gets any other command (colour, scene, effect…).
+
+    Args:
+        style: A style the light offers (for the Govee H6056: vivid, strike, rhythm, vibrate, beat, torch,
+            rainbowcircle, shiny). Empty = the light's first style. Unknown styles fall back to the first.
+    """
+    try:
+        kind, item, _views, names = await _resolve_target(device)
+        if kind != "device":
+            raise BackendError("not_a_device", "Music mode works on one light at a time; name the light")
+        device_id = item["device"]["id"]  # type: ignore[index]
+        await client().request("POST", f"/devices/{device_id}/music", {"style": style, "sensitivity": sensitivity})
+    except BackendError as err:
+        raise _tool_error(err) from None
+    return {"light": names.get(device_id, device_id), "music": style, "sensitivity": sensitivity, "confirmed": False}
+
+
+@mcp.tool(annotations=CONTROL)
+async def stop_effects() -> dict[str, Any]:
+    """Stop every running light effect (the lights stay as they are at that moment)."""
+    try:
+        running = await client().request("POST", "/effects/stop", {})
+    except BackendError as err:
+        raise _tool_error(err) from None
+    return {"stopped": True, "still_running": running}
+
+
+@mcp.tool(annotations=CONTROL)
 async def set_color_temperature(device: str, kelvin: int = Field(ge=1000, le=12000)) -> dict[str, Any]:
     """Set white colour temperature in Kelvin (e.g. 2700 warm, 4000 neutral, 6500 cool).
 
@@ -385,6 +469,8 @@ def summarize_automation(a: dict[str, Any], names: dict[str, str], rooms: dict[s
         )
         if action["type"] == "fade":
             what = f"wake-up fade to {action['to_brightness']}% over {action['duration_min']} min on {target_name}"
+        elif action["type"] == "fade_out":
+            what = f"sleep fade-out over {action['duration_min']} min on {target_name}"
         else:
             what = f"{action['command']} on {target_name}"
     return {
@@ -423,7 +509,7 @@ async def create_automation(
     name: str,
     when: str,
     action: Literal[
-        "scene", "turn_on", "turn_off", "set_color", "set_brightness", "set_color_temperature", "wake_up_fade"
+        "scene", "turn_on", "turn_off", "set_color", "set_brightness", "set_color_temperature", "wake_up_fade", "sleep_fade"
     ],
     target: str = "all",
     scene: str | None = None,
@@ -441,7 +527,9 @@ async def create_automation(
         when: "HH:MM" (24h), "sunrise" or "sunset". Sunrise/sunset need the location set in the dashboard.
         action: What to do. "scene" needs `scene`; "set_color" needs `color`; "set_brightness" needs
             `brightness`; "set_color_temperature" needs `kelvin`; "wake_up_fade" switches the lights on at
-            1 % and raises them to `brightness` (default 100) over `fade_minutes`, optionally in `kelvin` white.
+            1 % and raises them to `brightness` (default 100) over `fade_minutes`, optionally in `kelvin` white;
+            "sleep_fade" dims the lights that are on from their current brightness and switches them off
+            after `fade_minutes`.
         target: Light name, room name or "all" (ignored for "scene").
         offset_minutes: For sunrise/sunset: minutes before (negative) or after (positive).
         days: e.g. ["weekdays"], ["weekend"], ["mon", "fri"]; default every day.
@@ -474,7 +562,9 @@ async def create_automation(
                 target_spec["id"] = item["id"]  # type: ignore[index]
             elif kind == "device":
                 target_spec["id"] = item["device"]["id"]  # type: ignore[index]
-            if action == "wake_up_fade":
+            if action == "sleep_fade":
+                body_action = {"type": "fade_out", "target": target_spec, "duration_min": fade_minutes}
+            elif action == "wake_up_fade":
                 body_action = {
                     "type": "fade", "target": target_spec, "to_brightness": brightness or 100,
                     "duration_min": fade_minutes, "color_temp_k": kelvin,

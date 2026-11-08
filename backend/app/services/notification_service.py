@@ -125,6 +125,14 @@ class NotificationService:
         if problems:
             raise InvalidCommandError("; ".join(problems), details={"problems": problems})
 
+    def telegram_bot_credentials(self) -> tuple[str, str] | None:
+        """(token, chat id) when Telegram commands are turned on, else None."""
+        t = self._settings.telegram
+        token = self._secrets.get(SECRET_NAMES["telegram_token"])
+        if t.enabled and t.commands and t.chat_id and token:
+            return token, t.chat_id
+        return None
+
     # ------------------------------------------------------------------ Web Push
 
     def vapid_public_key(self) -> str:

@@ -17,7 +17,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import ClassVar, Protocol
 
-from app.domain.models import Command, DeviceRecord, DeviceState, DiscoveredDevice
+from app.core.errors import InvalidCommandError
+from app.domain.models import RGB, Command, DeviceRecord, DeviceState, DiscoveredDevice
 
 
 class ProviderEventSink(Protocol):
@@ -51,3 +52,21 @@ class DeviceProvider(ABC):
     @abstractmethod
     async def execute(self, device: DeviceRecord, command: Command) -> DeviceState | None:
         """Send a command; return the state reported by the device afterwards, or None."""
+
+    def segment_count(self, device: DeviceRecord) -> int:
+        """How many separately coloured segments the light has (0 = not supported)."""
+        return 0
+
+    def supports_music(self, device: DeviceRecord) -> bool:
+        """Can the light follow sound with its own microphone?"""
+        return False
+
+    async def music_styles(self, device: DeviceRecord) -> list[str]:
+        return []
+
+    async def set_music(self, device: DeviceRecord, style: str, sensitivity: int) -> None:
+        raise InvalidCommandError(f"{device.name} has no music mode")
+
+    async def set_segments(self, device: DeviceRecord, colors: list[RGB]) -> None:
+        """Colour each segment (``len(colors) == segment_count``). The device cannot confirm it."""
+        raise InvalidCommandError(f"{device.name} has no colour segments")

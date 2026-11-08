@@ -25,6 +25,7 @@ from app.persistence.database import Database
 from app.persistence.repositories import (
     ActivityRepository,
     AutomationRepository,
+    PowerEventRepository,
     DeviceRepository,
     RoomRepository,
     SceneRepository,
@@ -35,6 +36,12 @@ from app.providers.registry import ProviderRegistry
 from app.services.auth_service import AuthService
 from app.core.secrets import KeyringSecretStore, SecretStore
 from app.services.automation_service import AutomationService
+from app.services.vacation_service import VacationService
+from app.services.backup_service import BackupService
+from app.services.telegram_bot import TelegramBot
+from app.services.usage_service import UsageService
+from app.services.presence_service import PresenceService
+from app.services.effect_service import EffectService
 from app.services.notification_service import NotificationService
 from app.services.room_service import RoomService
 from app.services.device_service import DeviceService
@@ -49,6 +56,7 @@ def create_app(
     settings: Settings | None = None,
     providers: Iterable[DeviceProvider] | None = None,
     secret_store: SecretStore | None = None,
+    presence_scanner: object | None = None,
 ) -> FastAPI:
     """Build the app. ``providers`` / ``secret_store`` override the real ones (used by tests)."""
     settings = settings or get_settings()
@@ -75,6 +83,9 @@ def create_app(
         activity_repo = ActivityRepository(db)
         room_repo = RoomRepository(db)
         device_service = DeviceService(settings, DeviceRepository(db), registry, store, bus, activity_repo)
+        app.state.usage_service = UsageService(PowerEventRepository(db), device_service, store)
+        effect_service = EffectService(device_service, bus, activity_repo)
+        app.state.effect_service = effect_service
         scene_service = SceneService(SceneRepository(db), device_service, bus)
         room_service = RoomService(room_repo, device_service, bus)
         automation_service = AutomationService(
@@ -97,15 +108,32 @@ def create_app(
         app.state.auth_service = auth_service
         app.state.room_service = room_service
         app.state.automation_service = automation_service
+        vacation_service = VacationService(
+            SettingsRepository(db), device_service, bus, automation_service.get_location
+        )
+        app.state.vacation_service = vacation_service
+        backup_service = BackupService(db, settings.data_dir / "backups")
+        app.state.backup_service = backup_service
+        presence_service = PresenceService(
+            SettingsRepository(db), device_service, scene_service, bus, automation_service.get_location,
+            presence_scanner,
+        )
+        app.state.presence_service = presence_service
         app.state.activity_repo = activity_repo
         notification_service = NotificationService(
             SettingsRepository(db), secrets_backend, bus, device_service
         )
         app.state.notification_service = notification_service
+        telegram_bot = TelegramBot(notification_service, device_service, scene_service, room_repo)
+        app.state.telegram_bot = telegram_bot
 
         await device_service.start()
         await automation_service.start()
+        await vacation_service.start()
+        await backup_service.start()
+        await presence_service.start()
         await notification_service.start()
+        await telegram_bot.start()
         log.info(
             "backend started",
             extra={"ctx": {"host": settings.host, "port": settings.port, "version": __version__}},
@@ -113,7 +141,12 @@ def create_app(
         try:
             yield
         finally:
+            await telegram_bot.stop()
+            await effect_service.stop(log_it=False)
             await notification_service.stop()
+            await presence_service.stop()
+            await backup_service.stop()
+            await vacation_service.stop()
             await automation_service.stop()
             await device_service.stop()
             await db.close()

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import aiosqlite
 
@@ -274,6 +274,43 @@ class ActivityRepository:
             )
             for r in rows
         ]
+
+
+class PowerEventRepository:
+    """On/off moments of each light, for usage statistics. Kept for KEEP_DAYS."""
+
+    KEEP_DAYS = 400
+
+    def __init__(self, db: Database) -> None:
+        self._db = db
+        self._writes = 0
+
+    async def add(self, device_id: str, ts: datetime, is_on: bool) -> None:
+        await self._db.conn.execute(
+            "INSERT INTO power_events (device_id, ts, is_on) VALUES (?, ?, ?)", (device_id, ts.isoformat(), int(is_on))
+        )
+        self._writes += 1
+        if self._writes % 500 == 0:
+            cutoff = (ts - timedelta(days=self.KEEP_DAYS)).isoformat()
+            await self._db.conn.execute("DELETE FROM power_events WHERE ts < ?", (cutoff,))
+        await self._db.conn.commit()
+
+    async def between(self, since: datetime, until: datetime) -> dict[str, list[tuple[datetime, bool]]]:
+        """Events per device in [since, until], plus each device's last event before ``since``."""
+        out: dict[str, list[tuple[datetime, bool]]] = {}
+        async with self._db.conn.execute(
+            """
+            SELECT device_id, ts, is_on FROM power_events p
+            WHERE ts = (SELECT MAX(ts) FROM power_events q WHERE q.device_id = p.device_id AND q.ts < ?)
+            UNION ALL
+            SELECT device_id, ts, is_on FROM power_events WHERE ts >= ? AND ts <= ?
+            ORDER BY device_id, ts
+            """,
+            (since.isoformat(), since.isoformat(), until.isoformat()),
+        ) as cursor:
+            for row in await cursor.fetchall():
+                out.setdefault(row["device_id"], []).append((_dt(row["ts"]), bool(row["is_on"])))
+        return out
 
 
 class SettingsRepository:

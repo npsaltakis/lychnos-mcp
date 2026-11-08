@@ -18,13 +18,20 @@ from app.api.deps import (
     Rooms,
     Scenes,
     Source,
+    Vacation,
     origin_allowed,
     require_auth,
 )
 from app.domain.automations import Automation, AutomationInput, Location
+from app.services.backup_service import BackupFile
+from app.services.usage_service import UsageReport
+from app.services.effect_service import EffectRequest, RunningEffect
+from app.services.presence_service import Neighbor, PresenceSettings, PresenceStatus
+from app.services.vacation_service import VacationSettings, VacationStatus
 from app.domain.notifications import NotificationUpdate, NotificationView, PushSubscription
 from app.core.errors import CommandFailedError, UnauthorizedError
 from app.domain.models import (
+    RGB,
     ActivityEntry,
     BatchResult,
     Room,
@@ -106,6 +113,17 @@ async def system_info(request: Request, devices: Devices) -> dict[str, object]:
         "poll_interval_s": settings.poll_interval_s,
         "remote_access": settings.allow_remote,
     }
+
+
+@api.get("/system/backups", tags=["system"])
+async def list_backups(request: Request) -> dict[str, object]:
+    service = request.app.state.backup_service
+    return {"folder": str(service.folder), "backups": service.list()}
+
+
+@api.post("/system/backups", tags=["system"])
+async def create_backup(request: Request) -> BackupFile:
+    return await request.app.state.backup_service.create()
 
 
 # ----------------------------------------------------------------------------- devices
@@ -285,6 +303,106 @@ async def set_location(body: Location, automations: Automations) -> Location:
     return await automations.set_location(body)
 
 
+@api.get("/settings/vacation", tags=["automations"])
+async def get_vacation(vacation: Vacation) -> VacationStatus:
+    return vacation.status()
+
+
+@api.put("/settings/vacation", tags=["automations"])
+async def set_vacation(body: VacationSettings, vacation: Vacation) -> VacationStatus:
+    return await vacation.update(body)
+
+
+class SegmentsRequest(BaseModel):
+    colors: list[RGB] = Field(min_length=1, max_length=64)
+    mode: Literal["gradient", "exact", "per_bar"] = Field(
+        "gradient",
+        description="gradient: blend the colours along the whole light; per_bar: the same gradient on each "
+        "bar (lights made of several bars); exact: one colour per segment",
+    )
+
+
+def blend(colors: list[RGB], count: int) -> list[RGB]:
+    if len(colors) == 1:
+        return colors * count
+    out = []
+    for i in range(count):
+        pos = i * (len(colors) - 1) / max(count - 1, 1)
+        k = min(int(pos), len(colors) - 2)
+        t = pos - k
+        a, b = colors[k], colors[k + 1]
+        out.append(RGB(r=round(a.r + (b.r - a.r) * t), g=round(a.g + (b.g - a.g) * t), b=round(a.b + (b.b - a.b) * t)))
+    return out
+
+
+class MusicRequest(BaseModel):
+    style: str = Field("", max_length=40, description="One of the light's music styles; empty = the first one")
+    sensitivity: int = Field(80, ge=0, le=100)
+
+
+@api.get("/devices/{device_id}/music/styles", tags=["devices"])
+async def music_styles(device_id: str, devices: Devices) -> list[str]:
+    return await devices.music_styles(device_id)
+
+
+@api.post("/devices/{device_id}/music", tags=["devices"])
+async def set_music(device_id: str, body: MusicRequest, devices: Devices, source: Source) -> DeviceRuntime:
+    return await devices.set_music(device_id, body.style, body.sensitivity, source=source)
+
+
+@api.get("/devices/{device_id}/segments", tags=["devices"])
+async def get_segments(device_id: str, devices: Devices) -> dict[str, int]:
+    return {"count": devices.segment_count(device_id), "bars": 2 if devices.segment_count(device_id) == 12 else 1}
+
+
+@api.post("/devices/{device_id}/segments", tags=["devices"])
+async def set_segments(device_id: str, body: SegmentsRequest, devices: Devices, source: Source) -> DeviceRuntime:
+    count = devices.segment_count(device_id)
+    if body.mode == "exact":
+        colors = body.colors
+    elif body.mode == "per_bar" and count == 12:
+        colors = blend(body.colors, 6) * 2
+    else:
+        colors = blend(body.colors, max(count, 1))
+    return await devices.set_segments(device_id, colors, source=source)
+
+
+@api.get("/effects", tags=["devices"])
+async def list_effects(request: Request) -> list[RunningEffect]:
+    return request.app.state.effect_service.running()
+
+
+@api.post("/effects", tags=["devices"])
+async def start_effect(body: EffectRequest, request: Request, source: Source) -> RunningEffect:
+    return await request.app.state.effect_service.start(body, source=source)
+
+
+class EffectStop(BaseModel):
+    device_ids: list[str] | None = Field(None, description="Lights to stop; omit to stop every effect")
+
+
+@api.post("/effects/stop", tags=["devices"])
+async def stop_effects(body: EffectStop, request: Request, source: Source) -> list[RunningEffect]:
+    service = request.app.state.effect_service
+    await service.stop(body.device_ids, source=source)
+    return service.running()
+
+
+@api.get("/settings/presence", tags=["automations"])
+async def get_presence(request: Request) -> PresenceStatus:
+    return request.app.state.presence_service.status()
+
+
+@api.put("/settings/presence", tags=["automations"])
+async def set_presence(body: PresenceSettings, request: Request) -> PresenceStatus:
+    return await request.app.state.presence_service.update(body)
+
+
+@api.get("/presence/network", tags=["automations"])
+async def presence_network(request: Request) -> list[Neighbor]:
+    return await request.app.state.presence_service.network()
+
+
 # ----------------------------------------------------------------------------- notifications
 
 
@@ -336,6 +454,11 @@ async def webpush_unsubscribe(body: Unsubscribe, notifications: Notifications) -
 
 
 # ----------------------------------------------------------------------------- history
+
+
+@api.get("/stats/usage", tags=["history"])
+async def usage_stats(request: Request, days: int = Query(7, ge=1, le=90)) -> UsageReport:
+    return await request.app.state.usage_service.report(days)
 
 
 @api.get("/activity", tags=["history"])

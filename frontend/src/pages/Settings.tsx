@@ -1,9 +1,11 @@
-import { ChevronRight, Cpu, MapPin } from "lucide-react";
+import { ChevronRight, Cpu, DatabaseBackup, MapPin } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
-import type { SystemInfo } from "../api/types";
+import type { BackupFile, SystemInfo } from "../api/types";
 import { NotificationsCard } from "../components/NotificationsCard";
+import { VacationCard } from "../components/VacationCard";
+import { PresenceCard } from "../components/PresenceCard";
 import { Button, Card, LanguageSwitch, PageHeader } from "../components/ui";
 import { reportError } from "../lib/commands";
 import { t, useT } from "../lib/i18n";
@@ -97,6 +99,43 @@ function LocationCard() {
   );
 }
 
+function BackupCard() {
+  const tr = useT();
+  const [data, setData] = useState<{ folder: string; backups: BackupFile[] } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = () => api.backups().then(setData).catch((err) => reportError(null, err));
+  useEffect(() => {
+    void load();
+  }, []);
+  const latest = data?.backups[0];
+  const now = async () => {
+    setBusy(true);
+    try {
+      await api.createBackup();
+      notify("success", t("bak.done"));
+      await load();
+    } catch (err) {
+      reportError(null, err);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Card>
+      <h2 className="mb-1 flex items-center gap-2 font-semibold">
+        <DatabaseBackup className="size-5 text-muted" aria-hidden /> {tr("bak.title")}
+      </h2>
+      <p className="mb-2 text-sm text-muted">{tr("bak.text")}</p>
+      <Row label={tr("bak.latest")}>{latest ? new Date(latest.created_at).toLocaleString() : "—"}</Row>
+      <Row label={tr("bak.count")}>{data ? data.backups.length : "—"}</Row>
+      {data && <p className="mt-2 break-all text-xs text-muted">{data.folder}</p>}
+      <Button className="mt-3 border border-line" variant="ghost" busy={busy} onClick={now}>
+        {tr("bak.now")}
+      </Button>
+    </Card>
+  );
+}
+
 export function Settings() {
   const tr = useT();
   const [info, setInfo] = useState<SystemInfo | null>(null);
@@ -163,9 +202,15 @@ export function Settings() {
           </Link>
         </Card>
 
+        <BackupCard />
+
         <NotificationsCard />
 
         <LocationCard />
+
+        <PresenceCard />
+
+        <VacationCard />
 
         <Card className="lg:col-span-2">
           <h2 className="mb-2 font-semibold">{tr("set.security")}</h2>

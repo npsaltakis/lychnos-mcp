@@ -80,6 +80,15 @@ MIGRATIONS: list[str] = [
         value  TEXT NOT NULL
     );
     """,
+    """
+    CREATE TABLE power_events (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        device_id  TEXT NOT NULL,
+        ts         TEXT NOT NULL,
+        is_on      INTEGER NOT NULL
+    );
+    CREATE INDEX power_events_device_ts ON power_events (device_id, ts);
+    """,
 ]
 
 

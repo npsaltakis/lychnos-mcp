@@ -182,6 +182,34 @@ def test_fade_wake_up_light(client: TestClient, monkeypatch) -> None:
     assert service.get(automation["id"]).last_result["outcome"] == "all_confirmed"
 
 
+def test_fade_out_sleep_light(client: TestClient, monkeypatch) -> None:
+    async def instant(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(automation_module, "_sleep", instant)
+    ids = register_all(client)
+    desk = ids["Desk Bar"]
+    client.post(f"/api/devices/{desk}/commands", json={"type": "set_power", "on": True}, headers=AUTH)
+    client.post(f"/api/devices/{desk}/commands", json={"type": "set_brightness", "brightness": 60}, headers=AUTH)
+    automation = _create(client, {
+        "name": "Ύπνος",
+        "trigger": {"type": "time", "time": "23:30"},
+        "action": {"type": "fade_out", "target": {"kind": "device", "id": desk}, "duration_min": 1},
+    })
+    service = client.app.state.automation_service
+
+    async def run() -> None:
+        await service._run(service.get(automation["id"]), reason="test")
+
+    client.portal.call(run)
+    state = client.get(f"/api/devices/{desk}", headers=AUTH).json()["runtime"]["state"]
+    assert state["power"] is False
+    assert service.get(automation["id"]).last_result["outcome"] == "all_confirmed"
+    # Nothing on: nothing to do
+    client.portal.call(run)
+    assert service.get(automation["id"]).last_result["outcome"] == "nothing_to_do"
+
+
 def test_sun_automation_requires_location(client: TestClient) -> None:
     body = {
         "name": "Δύση",

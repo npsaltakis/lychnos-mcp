@@ -25,6 +25,7 @@ class EventType(StrEnum):
     SCENES_CHANGED = "scenes_changed"
     ROOMS_CHANGED = "rooms_changed"
     AUTOMATIONS_CHANGED = "automations_changed"
+    EFFECTS_CHANGED = "effects_changed"
     ACTIVITY_ADDED = "activity_added"
     AUTOMATION_RAN = "automation_ran"
     NOTIFICATION = "notification"

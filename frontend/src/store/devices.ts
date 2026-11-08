@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { CommandResult, DeviceRecord, DeviceRuntime, DeviceView } from "../api/types";
+import type { CommandResult, DeviceRecord, DeviceRuntime, DeviceView, EffectName, RunningEffect } from "../api/types";
 
 export type Connection = "connecting" | "online" | "offline";
 
@@ -19,6 +19,8 @@ interface DeviceStore {
   setResult: (result: CommandResult) => void;
   setConnection: (c: Connection) => void;
   bumpScenes: () => void;
+  effects: Record<string, EffectName>;
+  setEffects: (running: RunningEffect[]) => void;
 }
 
 const emptyRuntime: DeviceRuntime = {
@@ -58,6 +60,9 @@ export const useDevices = create<DeviceStore>((set) => ({
     }),
   setResult: (result) => set((s) => ({ lastResult: { ...s.lastResult, [result.device_id]: result } })),
   setConnection: (connection) => set({ connection }),
+  effects: {},
+  setEffects: (running) =>
+    set({ effects: Object.fromEntries(running.flatMap((r) => r.device_ids.map((id) => [id, r.effect] as const))) }),
   bumpScenes: () => set((s) => ({ scenesVersion: s.scenesVersion + 1 })),
 }));
 
