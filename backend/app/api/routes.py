@@ -25,7 +25,7 @@ from app.api.deps import (
 from app.domain.automations import Automation, AutomationInput, Location
 from app.services.backup_service import BackupFile
 from app.services.usage_service import UsageReport
-from app.services.scale_service import AddScale, RenameScale, ScaleCandidate, ScaleStatus
+from app.services.scale_service import AddScale, ScaleCandidate, ScaleStatus, ScaleUpdate
 from app.services.weather_service import WeatherReport
 from app.services.effect_service import EffectRequest, RunningEffect
 from app.services.presence_service import Neighbor, PresenceSettings, PresenceStatus
@@ -424,8 +424,9 @@ async def add_scale(body: AddScale, request: Request) -> ScaleStatus:
 
 
 @api.patch("/scale/scales/{address}", tags=["scale"])
-async def rename_scale(address: str, body: RenameScale, request: Request) -> ScaleStatus:
-    return await request.app.state.scale_service.rename(address, body.name)
+async def update_scale(address: str, body: ScaleUpdate, request: Request) -> ScaleStatus:
+    """Rename the scale and/or put it in a room."""
+    return await request.app.state.scale_service.update(address, body)
 
 
 @api.delete("/scale/scales/{address}", tags=["scale"])

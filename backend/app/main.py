@@ -132,6 +132,11 @@ def create_app(
         app.state.presence_service = presence_service
         scale_service = ScaleService(SettingsRepository(db), WeighingRepository(db), bus, scale_scan)  # type: ignore[arg-type]
         app.state.scale_service = scale_service
+
+        async def room_exists(room_id: str) -> bool:
+            return any(r.id == room_id for r in await room_repo.list())
+
+        scale_service.room_exists = room_exists
         app.state.activity_repo = activity_repo
         notification_service = NotificationService(
             SettingsRepository(db), secrets_backend, bus, device_service

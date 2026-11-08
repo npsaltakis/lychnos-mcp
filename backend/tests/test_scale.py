@@ -125,3 +125,16 @@ def test_weight_notification_text(client: TestClient) -> None:
     n, _ = service._translate(event)
     assert n is not None and n.title == "Ζύγιση: 110,6 kg"
     assert n.message.startswith("−0,4 kg")
+
+
+def test_scale_in_room(client: TestClient) -> None:
+    _discover_with(client, [(ADDR, NAME, {48223: MEASURING}, {})])
+    client.post("/api/scale/scales", json={"address": ADDR}, headers=AUTH)
+    room = client.post("/api/rooms", json={"name": "Μπάνιο"}, headers=AUTH).json()
+    s = client.patch(f"/api/scale/scales/{ADDR}", json={"room_id": room["id"]}, headers=AUTH).json()
+    assert s["scales"][0]["room_id"] == room["id"] and s["scales"][0]["name"] == NAME
+    assert client.patch(f"/api/scale/scales/{ADDR}", json={"room_id": "nope"}, headers=AUTH).status_code == 404
+    s = client.patch(f"/api/scale/scales/{ADDR}", json={"name": "Ζυγαριά"}, headers=AUTH).json()
+    assert s["scales"][0]["room_id"] == room["id"]  # renaming keeps the room
+    s = client.patch(f"/api/scale/scales/{ADDR}", json={"room_id": None}, headers=AUTH).json()
+    assert s["scales"][0]["room_id"] is None

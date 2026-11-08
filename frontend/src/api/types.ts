@@ -215,6 +215,7 @@ export interface Weighing {
 export interface ScaleView {
   address: string;
   name: string;
+  room_id: string | null;
   model: string;
   model_label: string;
   last_seen: string | null;

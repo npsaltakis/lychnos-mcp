@@ -12,7 +12,7 @@ import { notify } from "../store/toasts";
 
 const input = "min-h-10 w-full rounded-xl border border-line bg-panel-2 px-3 text-sm focus:border-accent focus:outline-none";
 
-function RoomsManager({ rooms, views }: { rooms: Room[]; views: DeviceView[] }) {
+function RoomsManager({ rooms, views, extraRoomIds = [] }: { rooms: Room[]; views: DeviceView[]; extraRoomIds?: (string | null)[] }) {
   const tr = useT();
   const [newName, setNewName] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
@@ -61,7 +61,7 @@ function RoomsManager({ rooms, views }: { rooms: Room[]; views: DeviceView[] }) 
       {rooms.length > 0 && (
         <ul className="mt-3 divide-y divide-line">
           {rooms.map((room) => {
-            const count = views.filter((v) => v.device.room_id === room.id).length;
+            const count = views.filter((v) => v.device.room_id === room.id).length + extraRoomIds.filter((id) => id === room.id).length;
             return (
               <li key={room.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                 {editing === room.id ? (
@@ -300,7 +300,7 @@ export function Devices() {
             )}
           </h2>
           {scale.scales.map((s) => (
-            <ScaleRow key={s.address} scale={s} onChange={setScale} />
+            <ScaleRow key={s.address} scale={s} rooms={rooms} onChange={setScale} />
           ))}
         </section>
       )}
@@ -327,7 +327,7 @@ export function Devices() {
         </div>
       ) : (
         <div className="space-y-6">
-          <RoomsManager rooms={rooms} views={views} />
+          <RoomsManager rooms={rooms} views={views} extraRoomIds={scale?.scales.map((s) => s.room_id) ?? []} />
           <div className={cx("space-y-3", scanning && "opacity-70")}>
             {views.map((v) => (
               <DeviceRow key={v.device.id} view={v} rooms={rooms} />

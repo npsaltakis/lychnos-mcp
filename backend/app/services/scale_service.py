@@ -142,6 +142,7 @@ class ScaleEntry(BaseModel):
     address: str = Field(max_length=40)
     name: str = Field(max_length=60)
     model: str = Field(max_length=40)
+    room_id: str | None = None
 
 
 class ScaleSettings(BaseModel):
@@ -174,8 +175,11 @@ class AddScale(BaseModel):
     name: str | None = Field(None, max_length=60)
 
 
-class RenameScale(BaseModel):
-    name: str = Field(min_length=1, max_length=60)
+class ScaleUpdate(BaseModel):
+    """Only the fields that are sent are changed; room_id null = no room."""
+
+    name: str | None = Field(None, min_length=1, max_length=60)
+    room_id: str | None = None
 
 
 async def bleak_scan(callback: AdvCallback) -> None:
@@ -214,6 +218,7 @@ class ScaleService:
         self._latest: Weighing | None = None
         self._last_final_at: dict[str, datetime] = {}
         self._discovering = 0
+        self.room_exists: Callable[[str], Awaitable[bool]] | None = None
         self._tasks: set[asyncio.Task[None]] = set()
 
     async def start(self) -> None:
@@ -280,11 +285,16 @@ class ScaleService:
             await self._save()
         return self.status()
 
-    async def rename(self, address: str, name: str) -> ScaleStatus:
+    async def update(self, address: str, body: ScaleUpdate) -> ScaleStatus:
         entry = self._added(address)
         if entry is None:
             raise NotFoundError("Scale not found", details={"address": address})
-        entry.name = name.strip()
+        if body.name is not None:
+            entry.name = body.name.strip()
+        if "room_id" in body.model_fields_set:
+            if body.room_id is not None and self.room_exists is not None and not await self.room_exists(body.room_id):
+                raise NotFoundError("Room not found", details={"room_id": body.room_id})
+            entry.room_id = body.room_id
         await self._save()
         return self.status()
 

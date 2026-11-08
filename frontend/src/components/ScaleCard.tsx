@@ -1,7 +1,7 @@
 import { Bluetooth, Check, Pencil, Plus, Scale, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { api } from "../api/client";
-import type { ScaleCandidate, ScaleStatus, ScaleView } from "../api/types";
+import type { Room, ScaleCandidate, ScaleStatus, ScaleView } from "../api/types";
 import { reportError } from "../lib/commands";
 import { t, useT } from "../lib/i18n";
 import { formatAgo } from "../lib/time";
@@ -12,7 +12,7 @@ import { fmtKg } from "./WeightCard";
 const input = "min-h-10 w-full rounded-xl border border-line bg-panel-2 px-3 text-sm focus:border-accent focus:outline-none";
 
 /** One added scale on the Devices page. */
-export function ScaleRow({ scale, onChange }: { scale: ScaleView; onChange: (s: ScaleStatus) => void }) {
+export function ScaleRow({ scale, rooms, onChange }: { scale: ScaleView; rooms: Room[]; onChange: (s: ScaleStatus) => void }) {
   const tr = useT();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(scale.name);
@@ -40,7 +40,7 @@ export function ScaleRow({ scale, onChange }: { scale: ScaleView; onChange: (s: 
               className="flex gap-2"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (name.trim()) void act("name", () => api.renameScale(scale.address, name.trim()));
+                if (name.trim()) void act("name", () => api.updateScale(scale.address, { name: name.trim() }));
               }}
             >
               <input autoFocus value={name} maxLength={60} onChange={(e) => setName(e.target.value)} aria-label={tr("dev.nameAria")} className={input} />
@@ -77,6 +77,21 @@ export function ScaleRow({ scale, onChange }: { scale: ScaleView; onChange: (s: 
             </span>
           </div>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+        <select
+          aria-label={tr("dev.roomFor", { name: scale.name })}
+          value={rooms.some((r) => r.id === scale.room_id) ? (scale.room_id ?? "") : ""}
+          disabled={busy !== null}
+          onChange={(e) => void act("room", () => api.updateScale(scale.address, { room_id: e.target.value || null }))}
+          className="min-h-10 rounded-xl border border-line bg-panel-2 px-3 text-sm focus:border-accent focus:outline-none"
+        >
+          <option value="">{tr("room.none")}</option>
+          {rooms.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
         <Button
           variant="danger"
           aria-label={tr("common.delete")}
@@ -87,6 +102,7 @@ export function ScaleRow({ scale, onChange }: { scale: ScaleView; onChange: (s: 
         >
           <Trash2 className="size-4" />
         </Button>
+        </div>
       </div>
     </Card>
   );
