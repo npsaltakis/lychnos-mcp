@@ -1,7 +1,8 @@
-import { Check, DoorOpen, Pencil, Plus, RefreshCw, Search, Trash2, TriangleAlert, Wifi, X } from "lucide-react";
-import { useState } from "react";
+import { Bluetooth, Check, DoorOpen, Pencil, Plus, RefreshCw, Search, Trash2, TriangleAlert, Wifi, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { api } from "../api/client";
-import type { DeviceView, Room } from "../api/types";
+import type { DeviceView, Room, ScaleCandidate, ScaleStatus } from "../api/types";
+import { ScaleCandidates, ScaleRow } from "../components/ScaleCard";
 import { Button, Card, Empty, PageHeader, StatusDot, cx } from "../components/ui";
 import { useRooms } from "../hooks/useData";
 import { reportError } from "../lib/commands";
@@ -251,21 +252,60 @@ function DeviceRow({ view, rooms }: { view: DeviceView; rooms: Room[] }) {
 export function Devices() {
   const tr = useT();
   const devices = useDevices((s) => s.devices);
+  const weightVersion = useDevices((s) => s.weightVersion);
   const rooms = useRooms();
   const [scanning, setScanning] = useState(false);
+  const [scale, setScale] = useState<ScaleStatus | null>(null);
+  const [candidates, setCandidates] = useState<ScaleCandidate[]>([]);
   const views = sortedViews(devices);
+
+  useEffect(() => {
+    api.scale().then(setScale).catch(() => undefined);
+  }, [weightVersion]);
 
   const scan = async () => {
     setScanning(true);
-    try {
-      const found = await api.scan(4);
-      notify("success", t("dev.scanDone"), t("dev.found", { n: found.length }));
-    } catch (err) {
-      reportError(null, err);
-    } finally {
-      setScanning(false);
-    }
+    setCandidates([]);
+    notify("info", t("scale.scanHint"));
+    const lights = api
+      .scan(4)
+      .then((found) => notify("success", t("dev.scanDone"), t("dev.found", { n: found.length })))
+      .catch((err) => reportError(null, err));
+    const scales = api
+      .discoverScales(12)
+      .then((found) => {
+        setCandidates(found);
+        if (found.length) notify("success", t("scale.foundTitle"), t("dev.found", { n: found.length }));
+      })
+      .catch((err) => reportError(null, err));
+    await Promise.all([lights, scales]);
+    setScanning(false);
   };
+
+  const scaleList = (
+    <>
+      <ScaleCandidates
+        found={candidates}
+        onAdded={(s, address) => {
+          setScale(s);
+          setCandidates(candidates.filter((c) => c.address !== address));
+        }}
+      />
+      {scale && scale.scales.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="flex items-center gap-2 text-sm font-medium text-muted">
+            <Bluetooth className="size-4" aria-hidden /> {tr("scale.section")}
+            {scale.bluetooth === "unavailable" && (
+              <span className="text-amber-400">· {tr("scale.unavailable", { error: scale.error ?? "" })}</span>
+            )}
+          </h2>
+          {scale.scales.map((s) => (
+            <ScaleRow key={s.address} scale={s} onChange={setScale} />
+          ))}
+        </section>
+      )}
+    </>
+  );
 
   return (
     <>
@@ -279,9 +319,12 @@ export function Devices() {
         }
       />
       {views.length === 0 ? (
-        <Empty icon={<Wifi className="size-8" />} title={tr("dev.emptyTitle")}>
-          {tr("dev.emptyText")}
-        </Empty>
+        <div className="space-y-6">
+          <Empty icon={<Wifi className="size-8" />} title={tr("dev.emptyTitle")}>
+            {tr("dev.emptyText")}
+          </Empty>
+          {scaleList}
+        </div>
       ) : (
         <div className="space-y-6">
           <RoomsManager rooms={rooms} views={views} />
@@ -290,6 +333,7 @@ export function Devices() {
               <DeviceRow key={v.device.id} view={v} rooms={rooms} />
             ))}
           </div>
+          {scaleList}
         </div>
       )}
     </>

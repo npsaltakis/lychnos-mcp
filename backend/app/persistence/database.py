@@ -97,6 +97,9 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX weighings_ts ON weighings (ts);
     """,
+    """
+    ALTER TABLE weighings ADD COLUMN scale TEXT;
+    """,
 ]
 
 

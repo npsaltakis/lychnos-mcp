@@ -6,7 +6,6 @@ import type { BackupFile, SystemInfo } from "../api/types";
 import { NotificationsCard } from "../components/NotificationsCard";
 import { VacationCard } from "../components/VacationCard";
 import { PresenceCard } from "../components/PresenceCard";
-import { ScaleCard } from "../components/ScaleCard";
 import { Button, Card, LanguageSwitch, PageHeader } from "../components/ui";
 import { reportError } from "../lib/commands";
 import { t, useLang, useT } from "../lib/i18n";
@@ -287,8 +286,6 @@ export function Settings() {
         <NotificationsCard />
 
         <PresenceCard />
-
-        <ScaleCard />
 
         <VacationCard />
 

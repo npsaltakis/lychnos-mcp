@@ -322,8 +322,10 @@ class WeighingRepository:
     def _row(row: Any) -> Weighing:
         return Weighing(id=row["id"], ts=_dt(row["ts"]), kg=row["kg"])
 
-    async def add(self, ts: datetime, kg: float) -> Weighing:
-        cursor = await self._db.conn.execute("INSERT INTO weighings (ts, kg) VALUES (?, ?)", (ts.isoformat(), kg))
+    async def add(self, ts: datetime, kg: float, scale: str | None = None) -> Weighing:
+        cursor = await self._db.conn.execute(
+            "INSERT INTO weighings (ts, kg, scale) VALUES (?, ?, ?)", (ts.isoformat(), kg, scale)
+        )
         await self._db.conn.commit()
         return Weighing(id=int(cursor.lastrowid or 0), ts=ts, kg=kg)
 

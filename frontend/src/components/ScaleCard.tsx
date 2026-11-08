@@ -1,120 +1,143 @@
-import { Bluetooth, Scale, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Bluetooth, Check, Pencil, Plus, Scale, Trash2, X } from "lucide-react";
+import { useState } from "react";
 import { api } from "../api/client";
-import type { ScaleStatus, Weighing } from "../api/types";
+import type { ScaleCandidate, ScaleStatus, ScaleView } from "../api/types";
 import { reportError } from "../lib/commands";
-import { locale, t, useT } from "../lib/i18n";
+import { t, useT } from "../lib/i18n";
 import { formatAgo } from "../lib/time";
-import { useDevices } from "../store/devices";
 import { notify } from "../store/toasts";
-import { Button, Card, Toggle, cx } from "./ui";
+import { Button, Card } from "./ui";
 import { fmtKg } from "./WeightCard";
 
-/** Settings: turn the Bluetooth scale on, see which scale was found, delete wrong weighings. */
-export function ScaleCard() {
+const input = "min-h-10 w-full rounded-xl border border-line bg-panel-2 px-3 text-sm focus:border-accent focus:outline-none";
+
+/** One added scale on the Devices page. */
+export function ScaleRow({ scale, onChange }: { scale: ScaleView; onChange: (s: ScaleStatus) => void }) {
   const tr = useT();
-  const version = useDevices((s) => s.weightVersion);
-  const [status, setStatus] = useState<ScaleStatus | null>(null);
-  const [rows, setRows] = useState<Weighing[]>([]);
-  const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(scale.name);
+  const [busy, setBusy] = useState<string | null>(null);
 
-  useEffect(() => {
-    const load = () => api.scale().then(setStatus).catch((err) => reportError(null, err));
-    void load();
-    const timer = setInterval(load, 15_000);
-    return () => clearInterval(timer);
-  }, [version]);
-  useEffect(() => {
-    api.weighings(60).then((r) => setRows(r.slice(-8).reverse())).catch(() => setRows([]));
-  }, [version]);
-
-  if (!status) return null;
-  const s = status.settings;
-
-  const save = async (next: ScaleStatus["settings"]) => {
-    setBusy(true);
+  const act = async (key: string, fn: () => Promise<ScaleStatus>) => {
+    setBusy(key);
     try {
-      setStatus(await api.setScale(next));
+      onChange(await fn());
+      setEditing(false);
     } catch (err) {
       reportError(null, err);
     } finally {
-      setBusy(false);
-    }
-  };
-
-  const remove = async (w: Weighing) => {
-    try {
-      await api.deleteWeighing(w.id);
-      setRows(rows.filter((r) => r.id !== w.id));
-      notify("success", t("scale.deleted"), `${fmtKg(w.kg)} kg`);
-    } catch (err) {
-      reportError(null, err);
+      setBusy(null);
     }
   };
 
   return (
-    <Card className="lg:col-span-2">
-      <div className="mb-1 flex items-center justify-between gap-3">
-        <h2 className="flex items-center gap-2 font-semibold">
-          <Scale className={cx("size-5", s.enabled ? "text-accent" : "text-muted")} aria-hidden />
-          {tr("scale.settingsTitle")}
-        </h2>
-        <Toggle checked={s.enabled} label={tr("scale.enabled")} disabled={busy} onChange={(on) => void save({ ...s, enabled: on })} />
-      </div>
-      <p className="mb-3 text-sm text-muted">{tr("scale.text")}</p>
-
-      {s.enabled && (
-        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm" aria-live="polite">
-          {status.bluetooth === "unavailable" ? (
-            <span className="text-amber-400">{tr("scale.unavailable", { error: status.error ?? "" })}</span>
-          ) : s.address ? (
-            <>
-              <span className="inline-flex items-center gap-1.5">
-                <Bluetooth className="size-4 text-accent" aria-hidden />
-                {tr("scale.found", { name: s.name || s.address })}
-              </span>
-              {status.last_seen && <span className="text-muted">{tr("scale.lastSeen", { when: formatAgo(status.last_seen) })}</span>}
-              <Button variant="ghost" className="border border-line" disabled={busy} onClick={() => void save({ ...s, address: "", name: "" })}>
-                {tr("scale.forget")}
+    <Card>
+      <div className="flex flex-wrap items-start gap-4">
+        <Scale className="mt-1 size-6 shrink-0 text-accent" aria-hidden />
+        <div className="min-w-0 flex-1">
+          {editing ? (
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (name.trim()) void act("name", () => api.renameScale(scale.address, name.trim()));
+              }}
+            >
+              <input autoFocus value={name} maxLength={60} onChange={(e) => setName(e.target.value)} aria-label={tr("dev.nameAria")} className={input} />
+              <Button type="submit" variant="primary" busy={busy === "name"} aria-label={tr("common.save")}>
+                <Check className="size-4" />
               </Button>
-            </>
+              <Button type="button" variant="ghost" onClick={() => setEditing(false)} aria-label={tr("common.cancel")}>
+                <X className="size-4" />
+              </Button>
+            </form>
           ) : (
-            <span className="inline-flex items-center gap-1.5 text-accent">
-              <Bluetooth className="size-4 animate-pulse" aria-hidden />
-              {tr("scale.waiting")}
+            <div className="flex items-center gap-2">
+              <h3 className="truncate font-semibold">{scale.name}</h3>
+              <button
+                onClick={() => setEditing(true)}
+                className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-panel-2 hover:text-white"
+                aria-label={`${tr("common.rename")} ${scale.name}`}
+              >
+                <Pencil className="size-4" />
+              </button>
+            </div>
+          )}
+          <p className="mt-1 text-xs text-muted">
+            {scale.model_label} · {scale.address} · Bluetooth
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            <span className="rounded-md bg-panel-2 px-2 py-0.5 text-gray-300">{tr("scale.cap")}</span>
+            <span className="text-muted">
+              {!scale.last_seen
+                ? tr("scale.notSeen")
+                : scale.last_kg != null
+                  ? tr("scale.lastReading", { kg: fmtKg(scale.last_kg), when: formatAgo(scale.last_seen) })
+                  : tr("scale.signal", { when: formatAgo(scale.last_seen) })}
             </span>
-          )}
+          </div>
         </div>
-      )}
+        <Button
+          variant="danger"
+          aria-label={tr("common.delete")}
+          busy={busy === "del"}
+          onClick={() => {
+            if (confirm(tr("scale.confirmRemove", { name: scale.name }))) void act("del", () => api.removeScale(scale.address));
+          }}
+        >
+          <Trash2 className="size-4" />
+        </Button>
+      </div>
+    </Card>
+  );
+}
 
-      {s.enabled && (
-        <div>
-          <h3 className="mb-1 text-sm text-muted">{tr("scale.recent")}</h3>
-          {rows.length === 0 ? (
-            <p className="text-sm text-muted">{tr("scale.none")}</p>
-          ) : (
-            <>
-              <ul className="divide-y divide-line text-sm">
-                {rows.map((w) => (
-                  <li key={w.id} className="flex items-center justify-between gap-3 py-1">
-                    <span className="tabular-nums">
-                      <span className="font-medium">{fmtKg(w.kg)} kg</span>
-                      <span className="text-muted">
-                        {" · "}
-                        {new Date(w.ts).toLocaleString(locale(), { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                    </span>
-                    <Button variant="ghost" className="size-10 p-0" aria-label={tr("common.delete")} onClick={() => void remove(w)}>
-                      <Trash2 className="size-4" aria-hidden />
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-1 text-xs text-muted">{tr("scale.deleteHint")}</p>
-            </>
-          )}
-        </div>
-      )}
+/** Scales found by the last search that are not added yet. */
+export function ScaleCandidates({
+  found,
+  onAdded,
+}: {
+  found: ScaleCandidate[];
+  onAdded: (s: ScaleStatus, address: string) => void;
+}) {
+  const tr = useT();
+  const [busy, setBusy] = useState<string | null>(null);
+  if (found.length === 0) return null;
+
+  const add = async (c: ScaleCandidate) => {
+    setBusy(c.address);
+    try {
+      onAdded(await api.addScale(c.address), c.address);
+      notify("success", t("scale.added"), c.model_label);
+    } catch (err) {
+      reportError(null, err);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <Card className="border-accent/40">
+      <h2 className="mb-2 flex items-center gap-2 font-semibold">
+        <Bluetooth className="size-5 text-accent" aria-hidden /> {tr("scale.foundTitle")}
+      </h2>
+      <ul className="divide-y divide-line text-sm">
+        {found.map((c) => (
+          <li key={c.address} className="flex flex-wrap items-center justify-between gap-3 py-2">
+            <span>
+              <span className="font-medium">{c.model_label}</span>
+              <span className="text-muted">
+                {" · "}
+                {c.address}
+                {c.kg != null && c.kg > 0 && ` · ${fmtKg(c.kg)} kg`}
+              </span>
+            </span>
+            <Button variant="primary" busy={busy === c.address} onClick={() => void add(c)}>
+              <Plus className="size-4" aria-hidden /> {tr("scale.add")}
+            </Button>
+          </li>
+        ))}
+      </ul>
     </Card>
   );
 }

@@ -1,11 +1,12 @@
-import { Scale } from "lucide-react";
+import { Scale, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import type { ScaleStatus, Weighing } from "../api/types";
 import { locale, useT } from "../lib/i18n";
+import { reportError } from "../lib/commands";
 import { formatAgo } from "../lib/time";
 import { useDevices } from "../store/devices";
-import { Card, cx } from "./ui";
+import { Button, Card, cx } from "./ui";
 
 const RANGES = [30, 90, 365] as const;
 const W = 600;
@@ -131,7 +132,7 @@ export function WeightCard() {
     api.weighings(days).then(setRows).catch(() => setRows([]));
   }, [days, version]);
 
-  if (!status?.settings.enabled || !status.latest) return null;
+  if (!status?.scales.length || !status.latest) return null;
   const latest = status.latest;
 
   return (
@@ -175,6 +176,34 @@ export function WeightCard() {
       ) : (
         <p className="mt-3 text-sm text-muted">{tr("scale.needMore")}</p>
       )}
+      <details className="mt-3 text-sm">
+        <summary className="cursor-pointer text-muted">{tr("scale.recent")}</summary>
+        <ul className="mt-2 divide-y divide-line">
+          {[...rows]
+            .reverse()
+            .slice(0, 10)
+            .map((w) => (
+              <li key={w.id} className="flex items-center justify-between gap-3 py-1">
+                <span className="tabular-nums">
+                  <span className="font-medium">{fmtKg(w.kg)} kg</span>
+                  <span className="text-muted">
+                    {" · "}
+                    {new Date(w.ts).toLocaleString(locale(), { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </span>
+                <Button
+                  variant="ghost"
+                  className="size-10 p-0"
+                  aria-label={tr("common.delete")}
+                  onClick={() => api.deleteWeighing(w.id).catch((err) => reportError(null, err))}
+                >
+                  <Trash2 className="size-4" aria-hidden />
+                </Button>
+              </li>
+            ))}
+        </ul>
+        <p className="mt-1 text-xs text-muted">{tr("scale.deleteHint")}</p>
+      </details>
     </Card>
   );
 }

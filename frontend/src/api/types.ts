@@ -212,17 +212,27 @@ export interface Weighing {
   kg: number;
 }
 
-export interface ScaleSettings {
-  enabled: boolean;
+export interface ScaleView {
   address: string;
   name: string;
+  model: string;
+  model_label: string;
+  last_seen: string | null;
+  last_kg: number | null;
+}
+
+export interface ScaleCandidate {
+  address: string;
+  name: string;
+  model: string;
+  model_label: string;
+  kg: number | null;
 }
 
 export interface ScaleStatus {
-  settings: ScaleSettings;
+  scales: ScaleView[];
   bluetooth: "off" | "listening" | "unavailable";
   error: string | null;
-  last_seen: string | null;
   latest: Weighing | null;
 }
 

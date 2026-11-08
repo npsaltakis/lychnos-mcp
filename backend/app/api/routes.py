@@ -25,7 +25,7 @@ from app.api.deps import (
 from app.domain.automations import Automation, AutomationInput, Location
 from app.services.backup_service import BackupFile
 from app.services.usage_service import UsageReport
-from app.services.scale_service import ScaleSettings, ScaleStatus
+from app.services.scale_service import AddScale, RenameScale, ScaleCandidate, ScaleStatus
 from app.services.weather_service import WeatherReport
 from app.services.effect_service import EffectRequest, RunningEffect
 from app.services.presence_service import Neighbor, PresenceSettings, PresenceStatus
@@ -408,9 +408,29 @@ async def scale_status(request: Request) -> ScaleStatus:
     return request.app.state.scale_service.status()
 
 
-@api.put("/settings/scale", tags=["scale"])
-async def set_scale(body: ScaleSettings, request: Request) -> ScaleStatus:
-    return await request.app.state.scale_service.update(body)
+class ScaleScan(BaseModel):
+    timeout_s: float = Field(12, ge=2, le=30)
+
+
+@api.post("/scale/discover", tags=["scale"])
+async def discover_scales(body: ScaleScan, request: Request) -> list[ScaleCandidate]:
+    """Listen over Bluetooth for scales (someone has to stand on them) that are not added yet."""
+    return await request.app.state.scale_service.discover(body.timeout_s)
+
+
+@api.post("/scale/scales", tags=["scale"])
+async def add_scale(body: AddScale, request: Request) -> ScaleStatus:
+    return await request.app.state.scale_service.add(body)
+
+
+@api.patch("/scale/scales/{address}", tags=["scale"])
+async def rename_scale(address: str, body: RenameScale, request: Request) -> ScaleStatus:
+    return await request.app.state.scale_service.rename(address, body.name)
+
+
+@api.delete("/scale/scales/{address}", tags=["scale"])
+async def remove_scale(address: str, request: Request) -> ScaleStatus:
+    return await request.app.state.scale_service.remove(address)
 
 
 @api.get("/scale/weighings", tags=["scale"])

@@ -497,14 +497,15 @@ async def _automation_context() -> tuple[dict[str, str], dict[str, str], dict[st
 async def get_weight(days: int = Field(30, ge=1, le=3650)) -> dict[str, Any]:
     """The user's weight from their Bluetooth bathroom scale: latest weighing and the history of the last `days` days.
 
-    Times are UTC (ISO 8601); weights in kg. Returns enabled=false if the scale is not set up in Settings.
+    Times are UTC (ISO 8601); weights in kg. Returns enabled=false if no scale is added in Devices.
     """
     try:
         status = await client().scale()
-        rows = await client().weighings(days) if status["settings"]["enabled"] else []
+        enabled = bool(status.get("scales"))
+        rows = await client().weighings(days) if enabled else []
     except BackendError as err:
         raise _tool_error(err) from None
-    out: dict[str, Any] = {"enabled": status["settings"]["enabled"], "latest": status.get("latest"), "weighings": [
+    out: dict[str, Any] = {"enabled": enabled, "latest": status.get("latest"), "weighings": [
         {"ts": r["ts"], "kg": r["kg"]} for r in rows
     ]}
     if len(rows) >= 2:
