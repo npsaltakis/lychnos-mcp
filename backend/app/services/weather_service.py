@@ -152,27 +152,10 @@ class WeatherService:
         """Find an address, street, town or city (OpenStreetMap Nominatim; Open-Meteo as a fallback)."""
         if self._http is None:
             self._http = httpx.AsyncClient(timeout=15)
-        try:
-            response = await self._http.get(
-                NOMINATIM_URL,
-                params={"q": query, "format": "jsonv2", "limit": 6, "accept-language": language, "layer": "address"},
-                headers={"User-Agent": USER_AGENT},
-            )
-            response.raise_for_status()
-            found = [
-                {
-                    # "10, Ερμού, Μοναστηράκι, …" → name "Ερμού 10", region "Μοναστηράκι, …"
-                    **_address_label(r.get("display_name", "")),
-                    "latitude": round(float(r["lat"]), 4),
-                    "longitude": round(float(r["lon"]), 4),
-                }
-                for r in response.json()
-            ]
-            unique = {(f["latitude"], f["longitude"]): f for f in found}
-            if unique:
-                return list(unique.values())
-        except (httpx.HTTPError, ValueError, KeyError):
-            pass
+        for layer in ("address", None):  # addresses first, then anything with that name
+            found = await self._nominatim(query, language, layer)
+            if found:
+                return found
         response = await self._http.get(
             GEOCODE_URL, params={"name": query, "count": 8, "language": language, "format": "json"}
         )
@@ -186,6 +169,27 @@ class WeatherService:
             }
             for r in response.json().get("results") or []
         ]
+
+    async def _nominatim(self, query: str, language: str, layer: str | None) -> list[dict]:
+        assert self._http is not None
+        params = {"q": query, "format": "jsonv2", "limit": 6, "accept-language": language}
+        if layer:
+            params["layer"] = layer
+        try:
+            response = await self._http.get(NOMINATIM_URL, params=params, headers={"User-Agent": USER_AGENT})
+            response.raise_for_status()
+            found = [
+                {
+                    # "10, Ερμού, Μοναστηράκι, …" → name "Ερμού 10", region "Μοναστηράκι, …"
+                    **_address_label(r.get("display_name", "")),
+                    "latitude": round(float(r["lat"]), 4),
+                    "longitude": round(float(r["lon"]), 4),
+                }
+                for r in response.json()
+            ]
+        except (httpx.HTTPError, ValueError, KeyError):
+            return []
+        return list({(f["latitude"], f["longitude"]): f for f in found}.values())
 
     def cloud_cover_at(self, when: datetime) -> int | None:
         """Forecast cloud cover (%) for the hour around ``when``, if known."""

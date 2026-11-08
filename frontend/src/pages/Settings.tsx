@@ -37,7 +37,9 @@ function LocationCard() {
     if (query.trim().length < 2) return;
     setSearching(true);
     try {
-      setResults(await api.places(query.trim(), useLang.getState().lang));
+      const found = await api.places(query.trim(), useLang.getState().lang);
+      if (found.length === 1) await choose(found[0]);
+      else setResults(found);
     } catch (err) {
       reportError(null, err);
     } finally {
@@ -124,6 +126,7 @@ function LocationCard() {
           <Search className="size-4" aria-hidden /> {tr("loc.search")}
         </Button>
       </form>
+      {results && results.length > 1 && <p className="mb-2 text-sm text-accent">{tr("loc.pick")}</p>}
       {results && (
         <ul className="mb-3 divide-y divide-line rounded-xl border border-line">
           {results.length === 0 && <li className="p-3 text-sm text-muted">{tr("loc.noResults")}</li>}
