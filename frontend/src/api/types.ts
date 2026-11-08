@@ -167,7 +167,7 @@ export interface PresenceSettings {
 export interface PresenceStatus {
   settings: PresenceSettings;
   anyone_home: boolean | null;
-  people: { name: string; mac: string; home: boolean; last_seen: string | null; ip: string | null }[];
+  people: { name: string; mac: string; home: boolean; last_seen: string | null; since: string | null; ip: string | null }[];
 }
 
 export interface Neighbor {

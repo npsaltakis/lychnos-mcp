@@ -73,3 +73,20 @@ def test_leave_switches_off_and_arrive_switches_on(client: TestClient) -> None:
     assert _power(client, desk) is True
     log = client.get("/api/activity?limit=50", headers=AUTH).json()
     assert any(e["source"] == "presence" for e in log)
+
+
+def test_since_tracks_arrival_and_leaving(client: TestClient) -> None:
+    service = client.app.state.presence_service
+    scanner = FakeScanner()
+    service._scanner = scanner
+    client.put("/api/settings/presence", json={
+        "enabled": True, "people": [{"name": "Νίκος", "mac": PHONE}], "away_after_min": 10, "on_leave": "nothing",
+    }, headers=AUTH)
+    t0 = datetime(2026, 11, 8, 18, tzinfo=timezone.utc)
+    client.portal.call(service.scan, t0)
+    client.portal.call(service.scan, t0 + timedelta(minutes=5))
+    assert service.status().people[0].since == t0  # stays at arrival, not "now"
+    scanner.present = False
+    client.portal.call(service.scan, t0 + timedelta(minutes=20))
+    person = service.status(t0 + timedelta(minutes=20)).people[0]
+    assert not person.home and person.since == t0 + timedelta(minutes=5)  # left after last sighting

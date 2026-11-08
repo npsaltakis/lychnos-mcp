@@ -4,10 +4,16 @@ import { api } from "../api/client";
 import type { Neighbor, PresenceSettings, PresenceStatus } from "../api/types";
 import { useScenes } from "../hooks/useData";
 import { reportError } from "../lib/commands";
-import { t, useT } from "../lib/i18n";
-import { formatAgo } from "../lib/time";
+import { locale, t, useT } from "../lib/i18n";
 import { notify } from "../store/toasts";
 import { Button, Card, Toggle, cx } from "./ui";
+
+function sinceLabel(iso: string): string {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
+  if (d.toDateString() === new Date().toDateString()) return time;
+  return `${d.toLocaleDateString(locale(), { weekday: "short", day: "numeric", month: "short" })} ${time}`;
+}
 
 /** Second hex digit 2/6/a/e = a "private" (random) address, which phones use on Wi-Fi. */
 const isRandomMac = (mac: string) => /^.[26ae]/i.test(mac);
@@ -107,7 +113,7 @@ export function PresenceCard() {
               {st && (
                 <span className={cx("text-xs", st.home ? "text-emerald-400" : "text-muted")}>
                   {st.home ? tr("pres.home") : tr("pres.away")}
-                  {st.last_seen && ` · ${formatAgo(st.last_seen)}`}
+                  {st.since && ` · ${tr("pres.since", { when: sinceLabel(st.since) })}`}
                 </span>
               )}
               <Button variant="ghost" className="size-10 p-0" aria-label={tr("common.delete")} onClick={() => set({ people: form.people.filter((_, j) => j !== i) })}>

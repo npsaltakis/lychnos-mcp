@@ -80,6 +80,7 @@ class PersonStatus(BaseModel):
     mac: str
     home: bool
     last_seen: datetime | None
+    since: datetime | None = None  # when this person last arrived / left (as far as Lychnos saw)
     ip: str | None
 
 
@@ -187,6 +188,8 @@ class PresenceService:
         self._settings = PresenceSettings()
         self._last_seen: dict[str, datetime] = {}
         self._ip: dict[str, str] = {}
+        self._person_home: dict[str, bool] = {}
+        self._since: dict[str, datetime] = {}
         self._anyone_home: bool | None = None
         self._last_sweep: datetime | None = None
         self._task: asyncio.Task[None] | None = None
@@ -212,7 +215,7 @@ class PresenceService:
         people = [
             PersonStatus(
                 name=p.name, mac=p.mac, home=self._is_home(p.mac, now),
-                last_seen=self._last_seen.get(p.mac), ip=self._ip.get(p.mac),
+                last_seen=self._last_seen.get(p.mac), since=self._since.get(p.mac), ip=self._ip.get(p.mac),
             )
             for p in self._settings.people
         ]
@@ -280,6 +283,12 @@ class PresenceService:
         return seen is not None and now - seen < timedelta(minutes=self._settings.away_after_min)
 
     async def evaluate(self, now: datetime) -> None:
+        for p in self._settings.people:
+            here = self._is_home(p.mac, now)
+            if self._person_home.get(p.mac) != here:
+                self._person_home[p.mac] = here
+                # Leaving counts from the last moment the phone was seen
+                self._since[p.mac] = now if here else (self._last_seen.get(p.mac) or now)
         home = any(self._is_home(p.mac, now) for p in self._settings.people)
         before = self._anyone_home
         self._anyone_home = home
