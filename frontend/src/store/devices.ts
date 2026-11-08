@@ -11,7 +11,8 @@ interface DeviceStore {
   roomsVersion: number;
   automationsVersion: number;
   activityVersion: number;
-  bump: (key: "roomsVersion" | "automationsVersion" | "activityVersion") => void;
+  weightVersion: number;
+  bump: (key: "roomsVersion" | "automationsVersion" | "activityVersion" | "weightVersion") => void;
   setSnapshot: (views: DeviceView[]) => void;
   upsertRecord: (record: DeviceRecord) => void;
   setRuntime: (id: string, runtime: DeviceRuntime) => void;
@@ -41,6 +42,7 @@ export const useDevices = create<DeviceStore>((set) => ({
   roomsVersion: 0,
   automationsVersion: 0,
   activityVersion: 0,
+  weightVersion: 0,
   bump: (key) => set((s) => ({ [key]: s[key] + 1 }) as Partial<DeviceStore>),
   setSnapshot: (views) => set({ devices: Object.fromEntries(views.map((v) => [v.device.id, v])) }),
   upsertRecord: (record) =>

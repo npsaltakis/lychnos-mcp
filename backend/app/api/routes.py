@@ -25,12 +25,13 @@ from app.api.deps import (
 from app.domain.automations import Automation, AutomationInput, Location
 from app.services.backup_service import BackupFile
 from app.services.usage_service import UsageReport
+from app.services.scale_service import ScaleSettings, ScaleStatus
 from app.services.weather_service import WeatherReport
 from app.services.effect_service import EffectRequest, RunningEffect
 from app.services.presence_service import Neighbor, PresenceSettings, PresenceStatus
 from app.services.vacation_service import VacationSettings, VacationStatus
 from app.domain.notifications import NotificationUpdate, NotificationView, PushSubscription
-from app.core.errors import CommandFailedError, UnauthorizedError
+from app.core.errors import CommandFailedError, NotFoundError, UnauthorizedError
 from app.domain.models import (
     RGB,
     ActivityEntry,
@@ -44,6 +45,7 @@ from app.domain.models import (
     DeviceView,
     Scene,
     SceneInput,
+    Weighing,
     utcnow,
 )
 
@@ -399,6 +401,28 @@ async def weather(request: Request) -> WeatherReport | None:
         return await request.app.state.weather_service.report()
     except Exception:
         return None
+
+
+@api.get("/scale", tags=["scale"])
+async def scale_status(request: Request) -> ScaleStatus:
+    return request.app.state.scale_service.status()
+
+
+@api.put("/settings/scale", tags=["scale"])
+async def set_scale(body: ScaleSettings, request: Request) -> ScaleStatus:
+    return await request.app.state.scale_service.update(body)
+
+
+@api.get("/scale/weighings", tags=["scale"])
+async def weighings(request: Request, days: int = Query(90, ge=1, le=3650)) -> list[Weighing]:
+    return await request.app.state.scale_service.weighings(days)
+
+
+@api.delete("/scale/weighings/{weighing_id}", tags=["scale"], status_code=status.HTTP_204_NO_CONTENT)
+async def delete_weighing(weighing_id: int, request: Request) -> Response:
+    if not await request.app.state.scale_service.delete(weighing_id):
+        raise NotFoundError("Weighing not found", details={"id": weighing_id})
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @api.get("/settings/presence", tags=["automations"])

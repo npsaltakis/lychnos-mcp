@@ -128,6 +128,12 @@ class BackendClient:
     async def room_command(self, room_id: str, command: dict[str, Any]) -> dict[str, Any]:
         return await self.request("POST", f"/rooms/{room_id}/commands", command)
 
+    async def scale(self) -> dict[str, Any]:
+        return await self.request("GET", "/scale")
+
+    async def weighings(self, days: int) -> list[dict[str, Any]]:
+        return await self.request("GET", f"/scale/weighings?days={days}")
+
     async def automations(self) -> list[dict[str, Any]]:
         return await self.request("GET", "/automations")
 

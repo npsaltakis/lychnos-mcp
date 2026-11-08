@@ -14,6 +14,7 @@ class NotificationEvent(StrEnum):
     AUTOMATION_FAILED = "automation_failed"
     AUTOMATION_RAN = "automation_ran"
     COMMAND_FAILED = "command_failed"
+    WEIGHT = "weight"
     TEST = "test"
 
 
@@ -49,6 +50,7 @@ class EventToggles(BaseModel):
     automation_failed: bool = True
     automation_ran: bool = False
     command_failed: bool = False
+    weight: bool = True
 
 
 class NotificationSettings(BaseModel):

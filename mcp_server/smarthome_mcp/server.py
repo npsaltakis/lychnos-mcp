@@ -494,6 +494,25 @@ async def _automation_context() -> tuple[dict[str, str], dict[str, str], dict[st
 
 
 @mcp.tool(annotations=READ)
+async def get_weight(days: int = Field(30, ge=1, le=3650)) -> dict[str, Any]:
+    """The user's weight from their Bluetooth bathroom scale: latest weighing and the history of the last `days` days.
+
+    Times are UTC (ISO 8601); weights in kg. Returns enabled=false if the scale is not set up in Settings.
+    """
+    try:
+        status = await client().scale()
+        rows = await client().weighings(days) if status["settings"]["enabled"] else []
+    except BackendError as err:
+        raise _tool_error(err) from None
+    out: dict[str, Any] = {"enabled": status["settings"]["enabled"], "latest": status.get("latest"), "weighings": [
+        {"ts": r["ts"], "kg": r["kg"]} for r in rows
+    ]}
+    if len(rows) >= 2:
+        out["change_kg"] = round(rows[-1]["kg"] - rows[0]["kg"], 1)
+    return out
+
+
+@mcp.tool(annotations=READ)
 async def list_automations() -> dict[str, Any]:
     """List automations (schedules) with when they run next and their last result. Times are local time."""
     try:

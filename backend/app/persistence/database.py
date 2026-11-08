@@ -89,6 +89,14 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX power_events_device_ts ON power_events (device_id, ts);
     """,
+    """
+    CREATE TABLE weighings (
+        id  INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts  TEXT NOT NULL,
+        kg  REAL NOT NULL
+    );
+    CREATE INDEX weighings_ts ON weighings (ts);
+    """,
 ]
 
 

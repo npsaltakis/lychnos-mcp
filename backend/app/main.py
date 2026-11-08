@@ -30,6 +30,7 @@ from app.persistence.repositories import (
     RoomRepository,
     SceneRepository,
     SettingsRepository,
+    WeighingRepository,
 )
 from app.providers.base import DeviceProvider
 from app.providers.registry import ProviderRegistry
@@ -43,6 +44,7 @@ from app.services.usage_service import UsageService
 from app.services.presence_service import PresenceService
 from app.services.effect_service import EffectService
 from app.services.weather_service import WeatherService
+from app.services.scale_service import ScaleService
 from app.services.notification_service import NotificationService
 from app.services.room_service import RoomService
 from app.services.device_service import DeviceService
@@ -59,6 +61,7 @@ def create_app(
     secret_store: SecretStore | None = None,
     presence_scanner: object | None = None,
     weather_enabled: bool = True,
+    scale_scan: object | None = None,
 ) -> FastAPI:
     """Build the app. ``providers`` / ``secret_store`` override the real ones (used by tests)."""
     settings = settings or get_settings()
@@ -127,6 +130,8 @@ def create_app(
             presence_scanner,
         )
         app.state.presence_service = presence_service
+        scale_service = ScaleService(SettingsRepository(db), WeighingRepository(db), bus, scale_scan)  # type: ignore[arg-type]
+        app.state.scale_service = scale_service
         app.state.activity_repo = activity_repo
         notification_service = NotificationService(
             SettingsRepository(db), secrets_backend, bus, device_service
@@ -140,6 +145,7 @@ def create_app(
         await vacation_service.start()
         await backup_service.start()
         await presence_service.start()
+        await scale_service.start()
         if weather_enabled:
             await weather_service.start()
         await notification_service.start()
@@ -155,6 +161,7 @@ def create_app(
             await effect_service.stop(log_it=False)
             await notification_service.stop()
             await presence_service.stop()
+            await scale_service.stop()
             await weather_service.stop()
             await backup_service.stop()
             await vacation_service.stop()

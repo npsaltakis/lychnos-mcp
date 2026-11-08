@@ -52,6 +52,9 @@ export function useLiveUpdates(): void {
         case "activity_added":
           s.bump("activityVersion");
           break;
+        case "weight_recorded":
+          s.bump("weightVersion");
+          break;
         case "notification":
           notify(event.data.level === "warning" ? "warning" : "info", event.data.message);
           break;

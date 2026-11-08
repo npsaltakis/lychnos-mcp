@@ -206,6 +206,26 @@ export interface WeatherReport {
   location_label: string;
 }
 
+export interface Weighing {
+  id: number;
+  ts: string;
+  kg: number;
+}
+
+export interface ScaleSettings {
+  enabled: boolean;
+  address: string;
+  name: string;
+}
+
+export interface ScaleStatus {
+  settings: ScaleSettings;
+  bluetooth: "off" | "listening" | "unavailable";
+  error: string | null;
+  last_seen: string | null;
+  latest: Weighing | null;
+}
+
 export interface UsageReport {
   days: string[];
   devices: { device_id: string; name: string; hours: number[]; total_hours: number }[];
@@ -269,6 +289,7 @@ export interface NotificationSettings {
     automation_failed: boolean;
     automation_ran: boolean;
     command_failed: boolean;
+    weight: boolean;
   };
 }
 
@@ -291,6 +312,7 @@ export type LiveEvent =
   | { type: "activity_added"; data: Record<string, never>; ts: string }
   | { type: "notification"; data: { level: string; message: string }; ts: string }
   | { type: "effects_changed"; data: { running: RunningEffect[] }; ts: string }
+  | { type: "weight_recorded"; data: Record<string, unknown>; ts: string }
   | { type: "resync_required"; data: Record<string, never>; ts: string };
 
 export type EffectName = "rainbow" | "breathe" | "candle";

@@ -17,6 +17,7 @@ const EVENTS: { key: keyof NotificationSettings["events"]; hint?: MessageKey }[]
   { key: "automation_failed" },
   { key: "automation_ran", hint: "ntf.ev.frequent" },
   { key: "command_failed", hint: "ntf.ev.frequent" },
+  { key: "weight", hint: "ntf.ev.weightHint" },
 ];
 
 const input = "min-h-10 w-full rounded-xl border border-line bg-panel-2 px-3 text-sm focus:border-accent focus:outline-none";

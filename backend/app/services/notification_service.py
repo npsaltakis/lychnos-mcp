@@ -10,6 +10,7 @@ Every channel is disabled until the user turns it on in Settings.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 import base64
 import logging
 import time
@@ -307,6 +308,22 @@ class NotificationService:
                 tags=["x"] if failed else ["clock3"],
                 priority="high" if failed else "low",
             ), (f"auto:{data.get('id')}" if failed else None)
+        if event.type is EventType.WEIGHT_RECORDED and data.get("weighing"):
+            kg = float(data["weighing"]["kg"])
+            message = ""
+            prev = data.get("previous")
+            if prev:
+                diff = kg - float(prev["kg"])
+                when = datetime.fromisoformat(prev["ts"]).astimezone().strftime("%d/%m")
+                sign = "+" if diff > 0 else "−" if diff < 0 else "±"
+                message = f"{sign}{abs(diff):.1f} kg από τη ζύγιση της {when}".replace(".", ",")
+            return Notification(
+                event=NotificationEvent.WEIGHT,
+                title=f"Ζύγιση: {kg:.1f} kg".replace(".", ","),
+                message=message,
+                tags=["scales"],
+                priority="low",
+            ), None
         if event.type is EventType.COMMAND_RESULT and data.get("outcome") == "failed":
             device_id = data.get("device_id", "")
             try:

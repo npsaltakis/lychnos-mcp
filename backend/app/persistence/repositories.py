@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import datetime, timedelta
+from typing import Any
 
 import aiosqlite
 
 from app.core.errors import ConflictError
 from app.domain.automations import Automation
-from app.domain.models import ActivityEntry, Capabilities, DeviceRecord, Room, Scene, SceneAction
+from app.domain.models import ActivityEntry, Capabilities, DeviceRecord, Room, Scene, SceneAction, Weighing
 from app.persistence.database import Database
 
 ACTIVITY_KEEP = 5000
@@ -311,6 +312,36 @@ class PowerEventRepository:
             for row in await cursor.fetchall():
                 out.setdefault(row["device_id"], []).append((_dt(row["ts"]), bool(row["is_on"])))
         return out
+
+
+class WeighingRepository:
+    def __init__(self, db: Database) -> None:
+        self._db = db
+
+    @staticmethod
+    def _row(row: Any) -> Weighing:
+        return Weighing(id=row["id"], ts=_dt(row["ts"]), kg=row["kg"])
+
+    async def add(self, ts: datetime, kg: float) -> Weighing:
+        cursor = await self._db.conn.execute("INSERT INTO weighings (ts, kg) VALUES (?, ?)", (ts.isoformat(), kg))
+        await self._db.conn.commit()
+        return Weighing(id=int(cursor.lastrowid or 0), ts=ts, kg=kg)
+
+    async def since(self, since: datetime) -> list[Weighing]:
+        async with self._db.conn.execute(
+            "SELECT id, ts, kg FROM weighings WHERE ts >= ? ORDER BY ts", (since.isoformat(),)
+        ) as cursor:
+            return [self._row(r) for r in await cursor.fetchall()]
+
+    async def latest(self) -> Weighing | None:
+        async with self._db.conn.execute("SELECT id, ts, kg FROM weighings ORDER BY ts DESC LIMIT 1") as cursor:
+            row = await cursor.fetchone()
+        return self._row(row) if row else None
+
+    async def delete(self, weighing_id: int) -> bool:
+        cursor = await self._db.conn.execute("DELETE FROM weighings WHERE id = ?", (weighing_id,))
+        await self._db.conn.commit()
+        return cursor.rowcount > 0
 
 
 class SettingsRepository:

@@ -386,3 +386,11 @@ class BatchResult(BaseModel):
         else:
             outcome = BatchOutcome.PARTIAL
         return cls(outcome=outcome, results=results, skipped=skipped)
+
+
+class Weighing(BaseModel):
+    """One weighing from the bathroom scale."""
+
+    id: int
+    ts: datetime
+    kg: float

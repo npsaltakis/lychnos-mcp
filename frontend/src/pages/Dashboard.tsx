@@ -6,6 +6,7 @@ import type { Scene } from "../api/types";
 import { AllLights, summarizeBatch } from "../components/AllLights";
 import { RoomSection } from "../components/RoomSection";
 import { WeatherCard } from "../components/WeatherCard";
+import { WeightCard } from "../components/WeightCard";
 import { Button, Card, Empty, PageHeader } from "../components/ui";
 import { useActivity, useAutomations, useRooms, useScenes } from "../hooks/useData";
 import { reportError } from "../lib/commands";
@@ -49,8 +50,9 @@ export function Dashboard() {
   return (
     <>
       <PageHeader title={t("home.title")} subtitle={t("home.subtitle")} />
-      <div className="mb-6">
+      <div className="mb-6 space-y-4">
         <WeatherCard />
+        <WeightCard />
       </div>
       {registered.length === 0 ? (
         <Empty icon={<Lightbulb className="size-8" />} title={t("home.emptyTitle")}>
