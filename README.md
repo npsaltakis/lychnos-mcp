@@ -88,13 +88,17 @@ The name is also an acronym of what the project is:
 - **Govee RGBIC segments**: gradients along the light (presets or two colours, optionally the same on each bar),
   sent locally. Verified on the H6056 light bars (2 bars × 6 segments).
 - **Govee music mode** (optional, cloud): the light follows the sound with its own microphone, in the styles the
-  light offers. The LAN API cannot do this, so it uses Govee's official cloud API with a free API key; everything
-  else stays local.
+  light offers (H6056: Vivid, Strike, Rhythm, Vibrate, Beat, Torch, Rainbow circle, Shiny) and with adjustable
+  sensitivity. One button starts and stops it. The LAN API and plain Bluetooth packets do not switch music mode on
+  (both tested on the H6056), so it uses Govee's official cloud API with a free API key and needs internet;
+  everything else stays local. Verified on hardware.
 - **Light effects**: rainbow, breathe and candle, run by Lychnos itself so they work on any colour light. An
   effect stops when you stop it or give that light any other command.
-- **Presence**: knows whether anyone is home from the phones on the home Wi-Fi (MAC address, read from the
-  computer's neighbour table; no app on the phone). When everyone leaves it can switch everything off; when
-  someone arrives it can switch the lights on or run a scene, optionally only after dark.
+- **Presence**: knows whether anyone is home from the phones on the home Wi-Fi (MAC address from the computer's
+  neighbour table plus a ping; no app on the phone). A *Devices on the network* list helps pick the phone. Shows
+  who is home and since when. After N minutes without an answer (phones sleep their Wi-Fi) someone counts as
+  away; when everyone has left it can switch everything off, and when someone arrives it can switch the lights on
+  or run a scene, optionally only after dark. Verified on hardware (lights off 5 minutes after the phone left).
 - **Vacation mode**: every evening, from sunset (or a set time) to a set end time, lights go on and off at
   random so the home looks lived in; at the end it switches off whatever it lit.
 - **Usage statistics**: hours on per light per day (7 or 30 days), counted from every change, including
@@ -170,6 +174,33 @@ Planned or possible integrations (see [Adding a new brand](#adding-a-new-brand))
 > **Why isn't "any device on the LAN" enough?** Being reachable on the network does not mean a device can
 > be controlled. Every manufacturer uses its own local protocol, and many require a per-device key.
 > **Matter** is the industry standard that solves this. A Matter provider is the path to brand-independent control.
+
+## Setting up the extras
+
+All of these are optional and off until you turn them on.
+
+- **Presence** (Settings → Presence): press *Devices on the network*, find your phone (Android: Settings → Wi-Fi →
+  your network → MAC address; entries marked *likely a phone* use a private address) and press *Use*. On the
+  phone, set the Wi-Fi MAC type to *device MAC* or *randomised per network*, not *per connection*, or the address
+  keeps changing. Choose what happens when everyone leaves / someone arrives and after how many minutes someone
+  counts as away (15 is a safe default).
+- **Vacation mode** (Settings → Vacation mode): pick the start (sunset or a time), the end time and the lights.
+  Set your location first if you use sunset.
+- **Sleep light** (Automations → action *Sleep (gradual fade-out)*), e.g. every night at 23:30 over 20 minutes.
+- **Telegram commands** (Settings → Notifications → Telegram): set the bot token and press *Find chat* first,
+  then tick *Also accept commands from this chat*. Commands work in Greek or English: `on`, `off living room`,
+  `40%`, `scene movie`, `status`, `menu`.
+- **Govee music mode**: in the Govee Home app, Profile → Settings → *Apply for API Key* (it arrives by email),
+  then from `backend/`:
+
+  ```bash
+  ../.venv/Scripts/python.exe -m app.integrations.govee_key   # Windows; on Linux ../.venv/bin/python
+  ```
+
+  It asks for the key without showing it, checks it, stores it in the OS keyring and lists the music styles each
+  light offers. No restart is needed. `--remove` deletes it.
+- **Backups**: automatic every day in `<data folder>/backups` (last 14 kept); *Back up now* in Settings. To
+  restore, stop the backend and copy a backup over `smarthome.db`.
 
 ## Architecture
 
@@ -451,6 +482,7 @@ Unlike frameworks that keep every secret in `.env` (e.g. Laravel), this project 
 
 | Secret | Stored in |
 |---|---|
+| Govee API key (music mode only), Telegram bot token, SMTP password, ntfy token, Web Push key | OS keyring (same as below) |
 | Sonoff/eWeLink device keys, eWeLink APPID/secret | OS keyring via [`keyring`](https://pypi.org/project/keyring/): Windows Credential Manager, GNOME Keyring/KWallet (Linux Mint, Ubuntu, KDE…), macOS Keychain |
 | Dashboard password | scrypt hash in the data folder (`dashboard_password.json`) |
 | API token for MCP/scripts | data folder (`api_token`), outside the project |
@@ -542,6 +574,10 @@ cd frontend;    npm run dev      # http://127.0.0.1:5173
 | Windows asks to allow Python on the network | Allow it. Discovery replies arrive on UDP 4002 (Govee) and mDNS 5353. |
 | `Govee: UDP port 4002 is in use` | Another Govee integration is running. Close it. |
 | Sonoff shows "missing eWeLink key" | Run the eWeLink key setup (see above). |
+| Presence says *away* although you are home | Set the phone's Wi-Fi MAC type to *device MAC* or *per network* (not *per connection*) and check the MAC in Settings → Presence. Raise *Away after* to 15 minutes: phones in standby answer late. |
+| Music mode: "needs a Govee API key" | Store the key with `python -m app.integrations.govee_key` (see *Setting up the extras*). |
+| Music mode does nothing | It goes through Govee's cloud: check the internet connection and that the light is in the same Govee account as the key. |
+| Telegram commands get no answer | Commands are accepted only from the Chat ID in Settings; press *Find chat* before turning commands on (afterwards the bot reads the messages itself). |
 | Claude says `backend_not_running` | Start `scripts\run-backend.ps1`. |
 | Claude Desktop → Settings → Developer shows **"No servers added"** | On Windows the Claude app is an MSIX package: when `register_mcp.py` runs from a terminal *inside* the Claude app, its write to `claude_desktop_config.json` lands in a private copy. Click **Edit config** there and paste the `mcpServers` snippet the script prints, then restart Claude Desktop. |
 | Different password/devices depending on where the backend was started | Use the default data folder (`%USERPROFILE%\.smarthome-control`, outside AppData) or set `SHC_DATA_DIR` explicitly. Folders under AppData are redirected for programs started from packaged apps such as the Claude app. |
@@ -563,8 +599,11 @@ cd frontend;    npm run dev      # http://127.0.0.1:5173
 - [x] Change log (including external changes) with CSV export; Greek/English interface
 - [x] Presence (phones on Wi-Fi), vacation mode, sleep light, light effects, usage statistics, daily backups,
   Telegram commands
+- [x] Govee RGBIC segment gradients (LAN) and music mode (cloud API), verified on the H6056
 - [x] WiZ and Shelly providers (awaiting hardware verification)
-- [ ] Sensor-based automations (needs sensors, e.g. on an Arduino UNO Q)
+- [ ] Move the hub to an always-on board (Arduino UNO Q): headless keyring fallback, LAN binding, linger for the
+  systemd service
+- [ ] Sensor-based automations on the UNO Q: clap switch, bedside button, motion and light sensors
 - [ ] More providers: Matter, …
 
 ## License
