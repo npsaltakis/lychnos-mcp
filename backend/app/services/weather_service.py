@@ -20,6 +20,9 @@ from app.domain.automations import Location
 log = logging.getLogger(__name__)
 
 URL = "https://api.open-meteo.com/v1/forecast"
+GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
+NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+USER_AGENT = "Lychnos/0.1 (self-hosted smart home dashboard)"
 REFRESH_S = 1800.0
 RETRY_S = 300.0
 
@@ -98,6 +101,15 @@ def parse(data: dict, label: str = "") -> tuple[WeatherReport, list[tuple[dateti
     return report, clouds
 
 
+def _address_label(display_name: str) -> dict[str, str]:
+    parts = [p.strip() for p in display_name.split(",") if p.strip()]
+    if len(parts) >= 3 and parts[1].isdigit():  # "Shop name, 10, Street, …": drop the shop
+        parts = parts[1:]
+    if len(parts) >= 2 and parts[0].isdigit():  # house number first
+        return {"name": f"{parts[1]} {parts[0]}", "region": ", ".join(parts[2:5])}
+    return {"name": parts[0] if parts else "", "region": ", ".join(parts[1:4])}
+
+
 class WeatherService:
     def __init__(
         self, location_getter: Callable[[], Location | None], http: httpx.AsyncClient | None = None,
@@ -135,6 +147,45 @@ class WeatherService:
         if self._fetched_for != (loc.latitude, loc.longitude):
             await self.refresh()
         return self._report
+
+    async def search_places(self, query: str, language: str = "el") -> list[dict]:
+        """Find an address, street, town or city (OpenStreetMap Nominatim; Open-Meteo as a fallback)."""
+        if self._http is None:
+            self._http = httpx.AsyncClient(timeout=15)
+        try:
+            response = await self._http.get(
+                NOMINATIM_URL,
+                params={"q": query, "format": "jsonv2", "limit": 6, "accept-language": language, "layer": "address"},
+                headers={"User-Agent": USER_AGENT},
+            )
+            response.raise_for_status()
+            found = [
+                {
+                    # "10, Ερμού, Μοναστηράκι, …" → name "Ερμού 10", region "Μοναστηράκι, …"
+                    **_address_label(r.get("display_name", "")),
+                    "latitude": round(float(r["lat"]), 4),
+                    "longitude": round(float(r["lon"]), 4),
+                }
+                for r in response.json()
+            ]
+            unique = {(f["latitude"], f["longitude"]): f for f in found}
+            if unique:
+                return list(unique.values())
+        except (httpx.HTTPError, ValueError, KeyError):
+            pass
+        response = await self._http.get(
+            GEOCODE_URL, params={"name": query, "count": 8, "language": language, "format": "json"}
+        )
+        response.raise_for_status()
+        return [
+            {
+                "name": r.get("name", ""),
+                "region": ", ".join(x for x in (r.get("admin1"), r.get("country")) if x),
+                "latitude": round(float(r["latitude"]), 4),
+                "longitude": round(float(r["longitude"]), 4),
+            }
+            for r in response.json().get("results") or []
+        ]
 
     def cloud_cover_at(self, when: datetime) -> int | None:
         """Forecast cloud cover (%) for the hour around ``when``, if known."""

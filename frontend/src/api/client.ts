@@ -123,6 +123,11 @@ export const api = {
   presence: () => request<PresenceStatus>("GET", "/settings/presence"),
   setPresence: (body: PresenceSettings) => request<PresenceStatus>("PUT", "/settings/presence", body),
   presenceNetwork: () => request<Neighbor[]>("GET", "/presence/network"),
+  places: (q: string, lang: string) =>
+    request<{ name: string; region: string; latitude: number; longitude: number }[]>(
+      "GET",
+      `/places?q=${encodeURIComponent(q)}&lang=${lang}`,
+    ),
   weather: () => request<WeatherReport | null>("GET", "/weather"),
   usage: (days: number) => request<UsageReport>("GET", `/stats/usage?days=${days}`),
   backups: () => request<{ folder: string; backups: BackupFile[] }>("GET", "/system/backups"),

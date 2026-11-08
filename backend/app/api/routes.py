@@ -381,6 +381,17 @@ async def stop_effects(body: EffectStop, request: Request, source: Source) -> li
     return service.running()
 
 
+@api.get("/places", tags=["automations"])
+async def search_places(
+    request: Request, q: str = Query(min_length=2, max_length=80), lang: str = Query("el", pattern="^[a-z]{2}$")
+) -> list[dict[str, object]]:
+    """Look up a town or city by name, to set the location without coordinates."""
+    try:
+        return await request.app.state.weather_service.search_places(q, lang)
+    except Exception:
+        raise CommandFailedError("Place search is not available (no internet?)", code="places_unavailable") from None
+
+
 @api.get("/weather", tags=["automations"])
 async def weather(request: Request) -> WeatherReport | None:
     """Current weather and the next days for the location in Settings (null without a location)."""

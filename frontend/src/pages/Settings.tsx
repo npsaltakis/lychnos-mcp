@@ -1,4 +1,4 @@
-import { ChevronRight, Cpu, DatabaseBackup, MapPin } from "lucide-react";
+import { ChevronRight, Cpu, DatabaseBackup, MapPin, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
@@ -8,7 +8,7 @@ import { VacationCard } from "../components/VacationCard";
 import { PresenceCard } from "../components/PresenceCard";
 import { Button, Card, LanguageSwitch, PageHeader } from "../components/ui";
 import { reportError } from "../lib/commands";
-import { t, useT } from "../lib/i18n";
+import { t, useLang, useT } from "../lib/i18n";
 import { secretStoreName, VENV_PY } from "../lib/platform";
 import { useDevices } from "../store/devices";
 import { notify } from "../store/toasts";
@@ -28,13 +28,45 @@ function LocationCard() {
   const [lon, setLon] = useState("");
   const [label, setLabel] = useState("");
   const [saving, setSaving] = useState(false);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<{ name: string; region: string; latitude: number; longitude: number }[] | null>(null);
+  const [searching, setSearching] = useState(false);
   const input = "min-h-10 w-full rounded-xl border border-line bg-panel-2 px-3 text-sm focus:border-accent focus:outline-none";
+
+  const search = async () => {
+    if (query.trim().length < 2) return;
+    setSearching(true);
+    try {
+      setResults(await api.places(query.trim(), useLang.getState().lang));
+    } catch (err) {
+      reportError(null, err);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const choose = async (p: { name: string; latitude: number; longitude: number }) => {
+    setLat(String(p.latitude));
+    setLon(String(p.longitude));
+    setLabel(p.name);
+    setResults(null);
+    setQuery("");
+    setSaving(true);
+    try {
+      await api.setLocation({ latitude: p.latitude, longitude: p.longitude, label: p.name });
+      notify("success", t("loc.saved"), p.name);
+    } catch (err) {
+      reportError(null, err);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   useEffect(() => {
     api
       .location()
       .then((loc) => {
-        if (!loc) return;
+        if (!loc || (loc.latitude === 0 && loc.longitude === 0)) return;
         setLat(String(loc.latitude));
         setLon(String(loc.longitude));
         setLabel(loc.label);
@@ -73,7 +105,48 @@ function LocationCard() {
     <Card className="lg:col-span-2">
       <h2 className="mb-1 font-semibold">{tr("loc.title")}</h2>
       <p className="mb-3 text-sm text-muted">{tr("loc.text")}</p>
-      <div className="grid gap-3 sm:grid-cols-3">
+      {label && lat && <p className="mb-3 text-sm">{tr("loc.current", { name: label })}</p>}
+      <form
+        className="mb-3 flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void search();
+        }}
+      >
+        <input
+          className={input}
+          placeholder={tr("loc.searchPlaceholder")}
+          aria-label={tr("loc.search")}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <Button type="submit" variant="primary" busy={searching}>
+          <Search className="size-4" aria-hidden /> {tr("loc.search")}
+        </Button>
+      </form>
+      {results && (
+        <ul className="mb-3 divide-y divide-line rounded-xl border border-line">
+          {results.length === 0 && <li className="p-3 text-sm text-muted">{tr("loc.noResults")}</li>}
+          {results.map((p) => (
+            <li key={`${p.latitude},${p.longitude}`}>
+              <button
+                type="button"
+                onClick={() => void choose(p)}
+                className="flex min-h-11 w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-panel-2"
+              >
+                <span>
+                  <span className="font-medium">{p.name}</span>
+                  {p.region && <span className="text-muted"> · {p.region}</span>}
+                </span>
+                <MapPin className="size-4 flex-none text-muted" aria-hidden />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <details className="text-sm">
+        <summary className="cursor-pointer text-muted">{tr("loc.manual")}</summary>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
         <label className="text-sm">
           <span className="mb-1 block text-muted">{tr("loc.lat")}</span>
           <input id="loc-lat" className={input} inputMode="decimal" placeholder="37.98" value={lat} onChange={(e) => setLat(e.target.value)} />
@@ -86,7 +159,7 @@ function LocationCard() {
           <span className="mb-1 block text-muted">{tr("loc.label")}</span>
           <input id="loc-label" className={input} maxLength={80} placeholder={tr("loc.labelPlaceholder")} value={label} onChange={(e) => setLabel(e.target.value)} />
         </label>
-      </div>
+        </div>
       <div className="mt-3 flex flex-wrap gap-2">
         <Button variant="primary" busy={saving} onClick={save}>
           {tr("common.save")}
@@ -95,6 +168,7 @@ function LocationCard() {
           <MapPin className="size-4" aria-hidden /> {tr("loc.fromBrowser")}
         </Button>
       </div>
+      </details>
     </Card>
   );
 }
@@ -162,6 +236,8 @@ export function Settings() {
           <ChevronRight className="size-5 text-muted" aria-hidden />
         </Link>
 
+        <LocationCard />
+
         <Card>
           <h2 className="mb-2 font-semibold">{tr("set.system")}</h2>
           <Row label={tr("set.version")}>{info?.version ?? "—"}</Row>
@@ -205,8 +281,6 @@ export function Settings() {
         <BackupCard />
 
         <NotificationsCard />
-
-        <LocationCard />
 
         <PresenceCard />
 
