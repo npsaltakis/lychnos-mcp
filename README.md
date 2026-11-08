@@ -95,6 +95,9 @@ The name is also an acronym of what the project is:
 - **Weather** on the home page (Open-Meteo, free, no key): now, today's high/low, feels-like, rain chance, wind,
   sunset and the next two days, for the location in Settings. Sunset automations can run 15–60 minutes earlier
   when the forecast is cloudy.
+- **Location by address**: type an address or a town in Settings → Location (OpenStreetMap search, free, no key);
+  a single match is saved at once, several are listed to pick from. Coordinates can still be entered by hand or
+  taken from the browser. Used for the weather and for sunrise/sunset times.
 - **Scenes with extras**: besides on/off, colour, white and brightness, a light in a scene can get a gradient
   (RGBIC lights), an effect or music mode, e.g. a *Party* scene with the bars in music mode.
 - **Light effects**: rainbow, breathe and candle, run by Lychnos itself so they work on any colour light. An
@@ -184,13 +187,18 @@ Planned or possible integrations (see [Adding a new brand](#adding-a-new-brand))
 
 All of these are optional and off until you turn them on.
 
+- **Location** (Settings → Location, at the top): type your address or town, press *Search* and pick the right
+  result. The weather card on the home page and the sunrise/sunset times use it. Only the coordinates and the
+  name you picked are stored, on this computer; the search text is sent to OpenStreetMap, the coordinates to
+  Open-Meteo for the forecast.
+
 - **Presence** (Settings → Presence): press *Devices on the network*, find your phone (Android: Settings → Wi-Fi →
   your network → MAC address; entries marked *likely a phone* use a private address) and press *Use*. On the
   phone, set the Wi-Fi MAC type to *device MAC* or *randomised per network*, not *per connection*, or the address
   keeps changing. Choose what happens when everyone leaves / someone arrives and after how many minutes someone
   counts as away (15 is a safe default).
 - **Vacation mode** (Settings → Vacation mode): pick the start (sunset or a time), the end time and the lights.
-  Set your location first if you use sunset.
+  Set your location first (see above) if you use sunset.
 - **Sleep light** (Automations → action *Sleep (gradual fade-out)*), e.g. every night at 23:30 over 20 minutes.
 - **Telegram commands** (Settings → Notifications → Telegram): set the bot token and press *Find chat* first,
   then tick *Also accept commands from this chat*. Commands work in Greek or English: `on`, `off living room`,
@@ -582,6 +590,7 @@ cd frontend;    npm run dev      # http://127.0.0.1:5173
 | Presence says *away* although you are home | Set the phone's Wi-Fi MAC type to *device MAC* or *per network* (not *per connection*) and check the MAC in Settings → Presence. Raise *Away after* to 15 minutes: phones in standby answer late. |
 | Music mode: "needs a Govee API key" | Store the key with `python -m app.integrations.govee_key` (see *Setting up the extras*). |
 | Music mode does nothing | It goes through Govee's cloud: check the internet connection and that the light is in the same Govee account as the key. |
+| No weather on the home page | Set the location (Settings → Location). If an address is not found, try just the street and town, or just the town. The weather needs internet. |
 | Telegram commands get no answer | Commands are accepted only from the Chat ID in Settings; press *Find chat* before turning commands on (afterwards the bot reads the messages itself). |
 | Claude says `backend_not_running` | Start `scripts\run-backend.ps1`. |
 | Claude Desktop → Settings → Developer shows **"No servers added"** | On Windows the Claude app is an MSIX package: when `register_mcp.py` runs from a terminal *inside* the Claude app, its write to `claude_desktop_config.json` lands in a private copy. Click **Edit config** there and paste the `mcpServers` snippet the script prints, then restart Claude Desktop. |
