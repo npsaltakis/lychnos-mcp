@@ -102,6 +102,15 @@ The name is also an acronym of what the project is:
   (RGBIC lights), an effect or music mode, e.g. a *Party* scene with the bars in music mode.
 - **Light effects**: rainbow, breathe and candle, run by Lychnos itself so they work on any colour light. An
   effect stops when you stop it or give that light any other command.
+- **Bathroom scale** (Bluetooth, local, no cloud): the weight is read from the scale's own Bluetooth broadcasts
+  as you stand on it, so nothing is paired and the vendor app keeps working. The home page shows the latest
+  weight, the change over 7 and 30 days and a chart (30 / 90 / 365 days); wrong weighings (a guest) can be
+  deleted. Scales are found with the same *Search the network* (stand on the scale while it searches), appear
+  under **Devices → Scales** and can be renamed and put in a room. Optional notification on every weighing with
+  the change since the last one, and Claude can answer "how much did I weigh this month?". Supported: **Eufy
+  Smart Scale C20** (T9130, verified on hardware) and **Xiaomi Mi Smart Scale / Mi Body Composition Scale 2**
+  (from their published format, not yet hardware-verified). The scale has to be within Bluetooth range of the
+  computer.
 - **Presence**: knows whether anyone is home from the phones on the home Wi-Fi (MAC address from the computer's
   neighbour table plus a ping; no app on the phone). A *Devices on the network* list helps pick the phone. Shows
   who is home and since when. After N minutes without an answer (phones sleep their Wi-Fi) someone counts as
@@ -124,7 +133,7 @@ The name is also an acronym of what the project is:
 - **Notifications** (all off by default, each with its own switch and a *Test* button in Settings):
   [ntfy](https://ntfy.sh) (free phone app, no account), Telegram (your own bot), email (SMTP, e.g. Gmail with an
   App Password) and browser push notifications from the dashboard itself. Choose which events notify you: a light
-  goes offline / comes back, an automation fails or runs, a command fails. Tokens and passwords are kept in the
+  goes offline / comes back, an automation fails or runs, a command fails, a new weighing. Tokens and passwords are kept in the
   OS keyring, never in the database or `.env`.
 
   | Channel | Setup |
@@ -142,7 +151,7 @@ The name is also an acronym of what the project is:
 - **MCP server** (official Python SDK, stdio) with tools: `list_devices`, `list_rooms`, `get_device_state`,
   `turn_on`, `turn_off`, `set_brightness`, `set_color`, `set_color_temperature`, `list_scenes`,
   `activate_scene`, `create_scene`, `list_automations`, `create_automation`, `set_automation_enabled`,
-  `delete_automation`, `start_effect`, `stop_effects`, `set_gradient`, `music_mode`. Automations include `wake_up_fade` and `sleep_fade`. Device, room and colour names (English and Greek) are resolved for you.
+  `delete_automation`, `start_effect`, `stop_effects`, `set_gradient`, `music_mode`, `get_weight`. Automations include `wake_up_fade` and `sleep_fade`. Device, room and colour names (English and Greek) are resolved for you.
 - **Security**: password login, HttpOnly/SameSite=Strict sessions, brute-force lockout, CSRF and DNS
   rebinding protection, API bound to `127.0.0.1`, secrets kept outside the repository.
 - **Extensible**: a provider/adapter interface; adding a brand does not touch the core, the dashboard or MCP.
@@ -154,9 +163,10 @@ Support is **per protocol**, not per individual device. Any device that speaks a
 | Integration | Protocol | Devices | Local? | Needs | Status |
 |---|---|---|---|---|---|
 | `govee_lan` | [Govee LAN API](https://app-h5.govee.com/user-manual/wlan-guide) (UDP) | ~250 Govee light models (strips, bars, bulbs, lamps). Check the official list. | ✅ | "LAN Control" enabled per device in the Govee Home app | ✅ Verified on hardware (H6056) |
-| `ewelink_lan` | eWeLink LAN (mDNS + encrypted HTTP) | Sonoff / eWeLink devices on stock firmware. Currently: RGB+CCT bulbs (UIID 104, e.g. **B05-BL**) | ✅ (after a one-time key fetch) | Free [eWeLink developer](https://dev.ewelink.cc) app to fetch device keys once | ✅ Implemented and unit-tested |
+| `ewelink_lan` | eWeLink LAN (mDNS + encrypted HTTP) | Sonoff / eWeLink devices on stock firmware. Currently: RGB+CCT bulbs (UIID 104 and 136, e.g. **B05-BL**) | ✅ (after a one-time key fetch) | Free [eWeLink developer](https://dev.ewelink.cc) app to fetch device keys once | ✅ Verified on hardware (B05-BL, UIID 136) |
 | `wiz_lan` | WiZ local UDP (JSON on port 38899, broadcast discovery) | **WiZ / Philips WiZ** bulbs, strips and plugs. RGB, tunable-white, dimmable and socket models are told apart by module name. | ✅ No keys, no cloud | "Allow local communication" on in the WiZ app (default) | ✅ Implemented and tested against a simulated light; not yet hardware-verified |
 | `shelly_lan` | Shelly local HTTP (Gen1 `/relay/0`, Gen2+ RPC `Switch.*`) | **Shelly** relays and plugs (Shelly 1, Plug S, Plus 1, Plus Plug, Pro, Gen3 …): on/off | ✅ No keys, no cloud | No password on the device (restricted login off) | ✅ Implemented and tested against simulated Gen1 and Gen2 devices; not yet hardware-verified |
+| Scales (built in) | Bluetooth LE advertisements (passive listening) | **Eufy Smart Scale C20** (T9130); **Xiaomi Mi Smart Scale** and **Mi Body Composition Scale 2** | ✅ No keys, no cloud, no pairing | Bluetooth on the computer, scale within range | ✅ Eufy C20 verified on hardware; Xiaomi from the published format |
 | `yeelight_lan` | [Yeelight LAN protocol](https://www.yeelight.com/download/Yeelight_Inter-Operation_Spec.pdf) (SSDP discovery on UDP 1982, TCP 55443, push notifications) | **Xiaomi / Yeelight** lights: colour and white bulbs, light strips, ceiling, bedside and desk lamps. Capabilities and colour-temperature range are detected from what each light reports. | ✅ No keys, no cloud | "LAN Control" enabled per light in the **Yeelight** app | ✅ Implemented and tested against a simulated bulb (spec-conformant); not yet hardware-verified |
 
 ### Xiaomi lights
@@ -212,6 +222,9 @@ All of these are optional and off until you turn them on.
 
   It asks for the key without showing it, checks it, stores it in the OS keyring and lists the music styles each
   light offers. No restart is needed. `--remove` deletes it.
+- **Bathroom scale**: *Devices → Search the network* and **stand on the scale** while it searches (scales only
+  broadcast while someone is on them), then press *Add*. The first weighing after that appears on the home page.
+  Turn on *A new weighing* in Settings → Notifications for a message after each weighing.
 - **Backups**: automatic every day in `<data folder>/backups` (last 14 kept); *Back up now* in Settings. To
   restore, stop the backend and copy a backup over `smarthome.db`.
 
@@ -310,12 +323,14 @@ to control. Only registered devices accept commands, from the dashboard and from
 - **Sonoff (eWeLink)**: LAN commands are encrypted with a per-device key that only eWeLink provides. Fetch it once:
   1. Register at https://dev.ewelink.cc (free developer certification) and create an app with redirect URL
      `http://127.0.0.1:8765/ewelink/callback`.
-  2. Run the setup (from `backend/`) and log in with your normal eWeLink account in the page that opens:
+  2. Run the setup (from `backend/`) and log in, in the page that opens, with the eWeLink account **that has the
+     lights** (the one in the eWeLink phone app). It can be a different account from the developer one:
      ```bash
      ../.venv/bin/python -m app.integrations.ewelink_setup          # Linux
      ..\.venv\Scripts\python.exe -m app.integrations.ewelink_setup   # Windows
      ```
-     The keys go to the **OS keyring**; the OAuth token is used once and never stored.
+     The keys go to the **OS keyring**; the OAuth token is used once and never stored. It looks in every home of
+     the account; if it saves 0 devices it lists what the account returned.
   3. Restart the backend and search for devices again.
 
 ## Running in the background and at startup
@@ -587,6 +602,9 @@ cd frontend;    npm run dev      # http://127.0.0.1:5173
 | Windows asks to allow Python on the network | Allow it. Discovery replies arrive on UDP 4002 (Govee) and mDNS 5353. |
 | `Govee: UDP port 4002 is in use` | Another Govee integration is running. Close it. |
 | Sonoff shows "missing eWeLink key" | Run the eWeLink key setup (see above). |
+| eWeLink setup saves 0 devices | You logged in with an account that does not have the lights (e.g. the developer account). Run it again and log in with the account of the eWeLink phone app. |
+| eWeLink developer console shows "Application data is syncing" | A new app takes 5–15 minutes to appear; refresh the page later. |
+| Scale not found by the search | Stand on it while the search runs (it only broadcasts then); move it closer to the computer; check that Bluetooth is on. |
 | Presence says *away* although you are home | Set the phone's Wi-Fi MAC type to *device MAC* or *per network* (not *per connection*) and check the MAC in Settings → Presence. Raise *Away after* to 15 minutes: phones in standby answer late. |
 | Music mode: "needs a Govee API key" | Store the key with `python -m app.integrations.govee_key` (see *Setting up the extras*). |
 | Music mode does nothing | It goes through Govee's cloud: check the internet connection and that the light is in the same Govee account as the key. |
@@ -600,12 +618,12 @@ cd frontend;    npm run dev      # http://127.0.0.1:5173
 
 - [x] Phase 1: feasibility and architecture
 - [x] Phase 2: backend foundation
-- [x] Phase 3: Govee LAN (verified), eWeLink LAN (awaiting key for hardware test)
+- [x] Phase 3: Govee LAN (verified), eWeLink LAN (verified on a B05-BL)
 - [x] Phase 4: dashboard + login
 - [x] Phase 5: MCP server for Claude Desktop / Claude Code
 - [x] Phase 6: hardware validation with Govee (MCP from Claude Code and Claude Desktop, dashboard sync,
   Google Home changes, power loss/recovery, error handling)
-- [ ] Sonoff hardware validation (after the eWeLink key setup)
+- [x] Sonoff hardware validation (B05-BL, UIID 136: on/off, colour, brightness, colour temperature)
 - [x] Phase 7: background start/stop/status scripts, autostart (Task Scheduler / systemd), remote access guide (LAN, Tailscale)
 - [x] Xiaomi / Yeelight provider (awaiting hardware verification)
 - [x] Rooms, automations (time, sunrise/sunset, wake-up light) and command history
@@ -616,6 +634,7 @@ cd frontend;    npm run dev      # http://127.0.0.1:5173
 - [x] Govee RGBIC segment gradients (LAN) and music mode (cloud API), verified on the H6056
 - [x] Weather card, cloudy-earlier sunset automations, scenes with gradient / effect / music
 - [x] WiZ and Shelly providers (awaiting hardware verification)
+- [x] Bluetooth bathroom scales (Eufy C20 verified; Xiaomi formats), weight card and chart, MCP `get_weight`
 - [ ] Move the hub to an always-on board (Arduino UNO Q): headless keyring fallback, LAN binding, linger for the
   systemd service
 - [ ] Sensor-based automations on the UNO Q: clap switch, bedside button, motion and light sensors
