@@ -145,10 +145,10 @@ def exchange_code(app_id: str, app_secret: str, region: str, code: str, redirect
     return payload["data"]["accessToken"]
 
 
-def fetch_things(app_id: str, region: str, access_token: str) -> list[dict[str, Any]]:
+def _get(app_id: str, region: str, access_token: str, path: str, params: dict[str, Any]) -> dict[str, Any]:
     response = httpx.get(
-        f"{API_HOSTS[region]}/v2/device/thing",
-        params={"num": 0},
+        f"{API_HOSTS[region]}{path}",
+        params=params,
         headers={
             "X-CK-Appid": app_id,
             "X-CK-Nonce": nonce(),
@@ -158,8 +158,20 @@ def fetch_things(app_id: str, region: str, access_token: str) -> list[dict[str, 
     )
     payload = response.json()
     if payload.get("error") != 0:
-        raise SystemExit(f"Device list failed: error {payload.get('error')} {payload.get('msg')}")
-    return payload["data"]["thingList"]
+        raise SystemExit(f"{path} failed: error {payload.get('error')} {payload.get('msg')}")
+    return payload.get("data") or {}
+
+
+def fetch_things(app_id: str, region: str, access_token: str) -> list[dict[str, Any]]:
+    """Devices of every home ("family") of the account, not only the current one."""
+    families = _get(app_id, region, access_token, "/v2/family", {}).get("familyList") or []
+    print(f"Homes in the account: {len(families)} " + ", ".join(repr(f.get("name")) for f in families))
+    things: dict[str, dict[str, Any]] = {}
+    for params in [{"num": 0}] + [{"num": 0, "familyid": f["id"]} for f in families if f.get("id")]:
+        for thing in _get(app_id, region, access_token, "/v2/device/thing", params).get("thingList") or []:
+            key = (thing.get("itemData") or {}).get("deviceid") or str(len(things))
+            things[key] = thing
+    return list(things.values())
 
 
 def main() -> None:
@@ -214,6 +226,17 @@ def main() -> None:
         saved.append(info)
     store.save(saved)
 
+    if not saved:
+        # Explain what came back (never prints keys) so an empty result can be diagnosed.
+        print(f"\nRegion: {region}. The account returned {len(things)} item(s):")
+        for thing in things:
+            item = thing.get("itemData") or {}
+            print(
+                f"  type={thing.get('itemType')}  id={item.get('deviceid')}  name={item.get('name')!r}"
+                f"  model={item.get('productModel')}  has_key={bool(item.get('devicekey'))}"
+            )
+        if not things:
+            print("  (none) - log in with the same account (and region) that the eWeLink app uses.")
     print(f"\nSaved {len(saved)} device(s) (keys in the OS keyring):")
     for info in saved:
         print(f"  {info.deviceid}  {info.name!r}  model={info.model}  uiid={info.uiid}")

@@ -200,7 +200,7 @@ async def test_ewelink_announcement_decrypts_state(tmp_path) -> None:
 async def test_ewelink_command_confirmed_by_announcement(tmp_path) -> None:
     provider, bulb, _, record = await make_provider(tmp_path)
     state = await provider.execute(record, SetColor(color=RGB(r=128, g=0, b=128)))
-    assert bulb.requests[-1] == ("/zeroconf/ltype", {"ltype": "color", "color": {"br": 100, "r": 128, "g": 0, "b": 128}})
+    assert bulb.requests[-1] == ("/zeroconf/dimmable", {"ltype": "color", "color": {"br": 100, "r": 128, "g": 0, "b": 128}})
     assert state is not None and state.color == RGB(r=128, g=0, b=128) and state.mode is LightMode.COLOR
 
     state = await provider.execute(record, SetPower(on=True))
@@ -227,3 +227,16 @@ async def test_ewelink_requires_key_and_presence(tmp_path) -> None:
     provider._seen.clear()
     with pytest.raises(DeviceOfflineError):
         await provider.get_state(record)
+
+
+def test_ewelink_uiid_136_uses_ct_0_to_100() -> None:
+    from app.domain.models import DeviceState, SetColorTemperature
+    from app.providers.ewelink_lan.models import spec_for
+
+    spec = spec_for(136)
+    assert spec is not None
+    assert spec.encode(SetColorTemperature(kelvin=6500), DeviceState(brightness=50)) == {
+        "ltype": "white", "white": {"br": 50, "ct": 100}
+    }
+    state, full = spec.parse({"switch": "on", "ltype": "white", "white": {"br": 40, "ct": 0}})
+    assert full and state.color_temp_k == 2000 and state.brightness == 40

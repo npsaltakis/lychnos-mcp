@@ -7,6 +7,8 @@ UIID 104 (Sonoff B05-BL / B05-B RGB+CCT bulbs), eWeLink parameters:
   {"switch": "on"|"off", "ltype": "color"|"white"|<effect>,
    "color": {"br": 1..100, "r": 0..255, "g": 0..255, "b": 0..255},
    "white": {"br": 1..100, "ct": 0..255}}      ct 0 = warmest, 255 = coldest
+
+UIID 136 (newer Sonoff B05-BL): the same parameters, but "ct" is 0..100.
 """
 
 from __future__ import annotations
@@ -34,13 +36,13 @@ CT_RAW_MAX = 255
 NO_CAPABILITIES = Capabilities(supported=frozenset(), supports_state_query=False)
 
 
-def kelvin_to_ct(kelvin: int, rng: ColorTempRange = B05_CT_RANGE) -> int:
+def kelvin_to_ct(kelvin: int, rng: ColorTempRange = B05_CT_RANGE, raw_max: int = CT_RAW_MAX) -> int:
     ratio = (kelvin - rng.min_k) / (rng.max_k - rng.min_k)
-    return max(0, min(CT_RAW_MAX, round(ratio * CT_RAW_MAX)))
+    return max(0, min(raw_max, round(ratio * raw_max)))
 
 
-def ct_to_kelvin(ct: int, rng: ColorTempRange = B05_CT_RANGE) -> int:
-    ratio = max(0, min(CT_RAW_MAX, ct)) / CT_RAW_MAX
+def ct_to_kelvin(ct: int, rng: ColorTempRange = B05_CT_RANGE, raw_max: int = CT_RAW_MAX) -> int:
+    ratio = max(0, min(raw_max, ct)) / raw_max
     return round(rng.min_k + ratio * (rng.max_k - rng.min_k))
 
 
@@ -58,7 +60,10 @@ class UiidSpec:
         raise NotImplementedError
 
 
+@dataclass(frozen=True)
 class B05Spec(UiidSpec):
+    ct_max: int = CT_RAW_MAX
+
     def parse(self, params: dict[str, Any]) -> tuple[DeviceState, bool]:
         power = None
         if "switch" in params:
@@ -71,7 +76,7 @@ class B05Spec(UiidSpec):
             if "br" in white:
                 values["brightness"] = int(white["br"])
             if "ct" in white:
-                values["color_temp_k"] = ct_to_kelvin(int(white["ct"]))
+                values["color_temp_k"] = ct_to_kelvin(int(white["ct"]), raw_max=self.ct_max)
         elif ltype == "color":
             color = params.get("color") or {}
             values["mode"] = LightMode.COLOR
@@ -91,10 +96,10 @@ class B05Spec(UiidSpec):
             case SetColor(color=c):
                 return {"ltype": "color", "color": {"br": brightness, "r": c.r, "g": c.g, "b": c.b}}
             case SetColorTemperature(kelvin=k):
-                return {"ltype": "white", "white": {"br": brightness, "ct": kelvin_to_ct(k)}}
+                return {"ltype": "white", "white": {"br": brightness, "ct": kelvin_to_ct(k, raw_max=self.ct_max)}}
             case SetBrightness(brightness=br):
                 if current.mode is LightMode.WHITE:
-                    ct = kelvin_to_ct(current.color_temp_k or B05_CT_RANGE.max_k)
+                    ct = kelvin_to_ct(current.color_temp_k or B05_CT_RANGE.max_k, raw_max=self.ct_max)
                     return {"ltype": "white", "white": {"br": br, "ct": ct}}
                 c = current.color or RGB(r=255, g=255, b=255)
                 return {"ltype": "color", "color": {"br": br, "r": c.r, "g": c.g, "b": c.b}}
@@ -113,6 +118,7 @@ B05_CAPABILITIES = Capabilities(
 
 SPECS: dict[int, UiidSpec] = {
     104: B05Spec(uiid=104, name="RGB+CCT bulb", capabilities=B05_CAPABILITIES),
+    136: B05Spec(uiid=136, name="RGB+CCT bulb", capabilities=B05_CAPABILITIES, ct_max=100),
 }
 
 

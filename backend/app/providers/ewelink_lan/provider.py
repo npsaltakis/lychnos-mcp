@@ -201,7 +201,8 @@ class EwelinkLanProvider(DeviceProvider):
             info = self._info.get(deviceid)
             spec = spec_for(info.uiid if info else None)
             has_key = self._keystore.get_devicekey(deviceid) is not None
-            metadata: dict[str, Any] = {"uiid": info.uiid if info else None, "has_devicekey": has_key}
+            # setup_required is always sent (None when fine) so a stale warning is cleared on merge.
+            metadata: dict[str, Any] = {"uiid": info.uiid if info else None, "has_devicekey": has_key, "setup_required": None}
             if not has_key:
                 metadata["setup_required"] = "Run the eWeLink key setup to enable local control"
             elif spec is None:
@@ -276,7 +277,9 @@ class EwelinkLanProvider(DeviceProvider):
     ) -> dict[str, Any]:
         if self._http is None:
             raise ProviderError("eWeLink LAN provider is not running")
-        command = next(iter(params))
+        # On/off goes to /zeroconf/switch; light settings (ltype/color/white) to /zeroconf/dimmable
+        # (verified on a B05-BL, UIID 136: /zeroconf/ltype answers 400).
+        command = "switch" if "switch" in params else "dimmable"
         data, iv = crypto.encrypt(params, devicekey)
         payload = {
             "sequence": str(int(time.time() * 1000)),
