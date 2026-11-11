@@ -44,6 +44,8 @@ SERVICE_TYPE = "_ewelink._tcp.local."
 HTTP_TIMEOUT_S = 2.0
 CONFIRM_WAIT_S = 2.5
 RESET_RETRIES = 3
+RECHECK_S = 60.0  # how often devices that have not been seen are looked for again
+RESTART_AFTER_MISSES = 2  # then the mDNS stack is restarted (e.g. it started before the network was up)
 
 
 @dataclass
@@ -77,17 +79,30 @@ class EwelinkLanProvider(DeviceProvider):
         self._azc: AsyncZeroconf | None = None
         self._browser: AsyncServiceBrowser | None = None
         self._http: httpx.AsyncClient | None = None
+        self._watch_task: asyncio.Task[None] | None = None
 
     # ------------------------------------------------------------------ lifecycle
 
-    async def start(self, sink: ProviderEventSink) -> None:
-        self._sink = sink
-        self._info = self._keystore.load()
+    def _start_mdns(self) -> None:
         interfaces: Any = [self._settings.lan_interface_ip] if self._settings.lan_interface_ip else None
         self._azc = AsyncZeroconf(interfaces=interfaces) if interfaces else AsyncZeroconf()
         self._browser = AsyncServiceBrowser(
             self._azc.zeroconf, SERVICE_TYPE, handlers=[self._on_service_change]
         )
+
+    async def _stop_mdns(self) -> None:
+        if self._browser is not None:
+            await self._browser.async_cancel()
+            self._browser = None
+        if self._azc is not None:
+            await self._azc.async_close()
+            self._azc = None
+
+    async def start(self, sink: ProviderEventSink) -> None:
+        self._sink = sink
+        self._info = self._keystore.load()
+        self._start_mdns()
+        self._watch_task = asyncio.create_task(self._watch_missing(), name="ewelink-watch")
         self._http = httpx.AsyncClient(timeout=HTTP_TIMEOUT_S, headers={"Connection": "close"})
         missing = [d for d in self._info if not self._keystore.get_devicekey(d)]
         log.info(
@@ -96,14 +111,44 @@ class EwelinkLanProvider(DeviceProvider):
         )
 
     async def stop(self) -> None:
+        if self._watch_task is not None:
+            self._watch_task.cancel()
         for task in self._tasks:
             task.cancel()
-        if self._browser is not None:
-            await self._browser.async_cancel()
-        if self._azc is not None:
-            await self._azc.async_close()
+        await self._stop_mdns()
         if self._http is not None:
             await self._http.aclose()
+
+    async def _watch_missing(self) -> None:
+        """Ask again for configured devices that have not been seen.
+
+        Devices only re-announce when their state changes, so one missed announcement (or an mDNS
+        stack that started before the network was up, e.g. at boot) would otherwise leave a light
+        "offline" until it is switched from another app.
+        """
+        misses = 0
+        while True:
+            await asyncio.sleep(RECHECK_S)
+            try:
+                missing = [d for d in self._info if d not in self._seen and self._keystore.get_devicekey(d)]
+                if not missing or self._azc is None:
+                    misses = 0
+                    continue
+                for deviceid in missing:
+                    await self._resolve(self._azc.zeroconf, f"eWeLink_{deviceid}.{SERVICE_TYPE}", deviceid)
+                if all(d in self._seen for d in missing):
+                    misses = 0
+                    continue
+                misses += 1
+                if misses >= RESTART_AFTER_MISSES:
+                    log.info("ewelink: devices not seen, restarting mDNS", extra={"ctx": {"missing": missing}})
+                    await self._stop_mdns()
+                    self._start_mdns()
+                    misses = 0
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("ewelink watch failed")
 
     # ------------------------------------------------------------------ mDNS handling
 
